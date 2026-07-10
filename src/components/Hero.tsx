@@ -84,7 +84,11 @@ export function Hero({ dict }: { dict: Dictionary }) {
     <section
       id="home"
       className="relative flex flex-col items-center justify-center overflow-hidden"
-      style={{ backgroundColor: "#ffffff", minHeight: "100svh" }}
+      style={{
+        backgroundColor: "#ffffff",
+        minHeight: "100svh",
+        paddingTop: "64px",
+      }}
     >
       {/* Subtle gradient backdrop */}
       <div
