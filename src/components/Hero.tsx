@@ -104,7 +104,7 @@ export function Hero({ dict }: { dict: Dictionary }) {
         <h1
           className="text-black"
           style={{
-            fontSize: "clamp(42px, 10vw, 96px)",
+            fontSize: "clamp(32px, 9vw, 96px)",
             fontWeight: 900,
             letterSpacing: "-0.04em",
             lineHeight: 1.0,
@@ -120,29 +120,39 @@ export function Hero({ dict }: { dict: Dictionary }) {
           {dict.hero.tag}
         </p>
 
-        {/* Mobile-only silhouettes above hook line */}
+        {/* Mobile-only silhouettes above hook line — slide in from both sides */}
         <div
-          className="md:hidden mt-8 flex items-end justify-center gap-3"
+          className="md:hidden mt-2 flex items-end justify-center gap-3 overflow-hidden"
           aria-hidden="true"
         >
           <img
             src={skiImage}
             alt=""
-            style={{ width: "44%", height: "auto", display: "block" }}
+            style={{
+              width: "44%",
+              height: "auto",
+              display: "block",
+              ...skierStyle,
+            }}
           />
           <img
             src={boardImage}
             alt=""
-            style={{ width: "44%", height: "auto", display: "block" }}
+            style={{
+              width: "44%",
+              height: "auto",
+              display: "block",
+              ...boarderStyle,
+            }}
           />
         </div>
 
         {/* Hook line */}
-        <div className="mt-8">
+        <div className="mt-4 md:mt-8">
           <p
             className="text-black"
             style={{
-              fontSize: "clamp(18px, 3.6vw, 26px)",
+              fontSize: "clamp(14px, 3.4vw, 26px)",
               fontWeight: 700,
               letterSpacing: "-0.02em",
               lineHeight: 1.35,
@@ -153,13 +163,13 @@ export function Hero({ dict }: { dict: Dictionary }) {
         </div>
 
         {/* Category chips — 2-col on mobile (Activities | Relax & Dine), stacked on sm+ */}
-        <div className="mt-10 grid grid-cols-2 gap-4 sm:block sm:space-y-5">
+        <div className="mt-4 md:mt-10 grid grid-cols-2 gap-4 sm:block sm:space-y-5">
           <CategoryRow label={dict.hero.activitiesLabel} items={dict.hero.activitiesItems} />
           <CategoryRow label={dict.hero.relaxDineLabel} items={dict.hero.relaxDineItems} />
         </div>
 
         {/* Social channels (compact row above the secondary CTA) */}
-        <div className="mt-8 flex items-center justify-center gap-3">
+        <div className="mt-5 md:mt-8 flex items-center justify-center gap-3">
           <a
             href="https://www.youtube.com/@JangchojiTV/videos"
             target="_blank"

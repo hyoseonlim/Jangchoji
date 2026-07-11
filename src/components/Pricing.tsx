@@ -18,15 +18,15 @@ export function Pricing({ dict }: { dict: Dictionary }) {
   return (
     <section
       id="pricing"
-      className="py-24 px-5 md:px-8"
+      className="py-14 md:py-24 px-5 md:px-8"
       style={{ backgroundColor: "#f7f7f7" }}
     >
       <div className="max-w-7xl mx-auto">
-        <div className="mb-16">
+        <div className="mb-8 md:mb-16">
           <h2
             className="text-black"
             style={{
-              fontSize: "clamp(32px, 6vw, 56px)",
+              fontSize: "clamp(24px, 5.5vw, 56px)",
               fontWeight: 900,
               letterSpacing: "-0.03em",
               lineHeight: 1.05,
@@ -170,7 +170,7 @@ export function Pricing({ dict }: { dict: Dictionary }) {
             <h3
               className="text-black"
               style={{
-                fontSize: "clamp(24px, 4.2vw, 36px)",
+                fontSize: "clamp(20px, 4.2vw, 36px)",
                 fontWeight: 900,
                 letterSpacing: "-0.03em",
                 lineHeight: 1.1,

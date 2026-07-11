@@ -74,15 +74,15 @@ export function Directions({ dict }: { dict: Dictionary }) {
   return (
     <section
       id="directions"
-      className="py-24 px-5 md:px-8"
+      className="py-14 md:py-24 px-5 md:px-8"
       style={{ backgroundColor: "#f7f7f7" }}
     >
       <div className="max-w-7xl mx-auto">
-        <div className="mb-12">
+        <div className="mb-6 md:mb-12">
           <h2
             className="text-black"
             style={{
-              fontSize: "clamp(32px, 6vw, 56px)",
+              fontSize: "clamp(24px, 5.5vw, 56px)",
               fontWeight: 900,
               letterSpacing: "-0.03em",
               lineHeight: 1.05,

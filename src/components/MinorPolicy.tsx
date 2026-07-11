@@ -13,15 +13,15 @@ export function MinorPolicy({ dict }: { dict: Dictionary }) {
   return (
     <section
       id="minor-policy"
-      className="py-20 px-5 md:px-8"
+      className="py-12 md:py-20 px-5 md:px-8"
       style={{ backgroundColor: "#f7f7f7" }}
     >
       <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
+        <div className="mb-6 md:mb-8">
           <h2
             className="text-black"
             style={{
-              fontSize: "clamp(28px, 5vw, 44px)",
+              fontSize: "clamp(22px, 5vw, 44px)",
               fontWeight: 900,
               letterSpacing: "-0.03em",
               lineHeight: 1.1,

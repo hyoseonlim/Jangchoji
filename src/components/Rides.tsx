@@ -4,7 +4,7 @@ export function Rides({ dict }: { dict: Dictionary }) {
   return (
     <section
       id="rides"
-      className="py-24 px-5 md:px-8 scroll-mt-20"
+      className="py-14 md:py-24 px-5 md:px-8 scroll-mt-20"
       style={{ backgroundColor: "#ffffff" }}
     >
       <div className="max-w-7xl mx-auto">
@@ -12,7 +12,7 @@ export function Rides({ dict }: { dict: Dictionary }) {
           <h2
             className="text-black"
             style={{
-              fontSize: "clamp(28px, 5vw, 48px)",
+              fontSize: "clamp(22px, 5vw, 48px)",
               fontWeight: 900,
               letterSpacing: "-0.03em",
               lineHeight: 1.05,

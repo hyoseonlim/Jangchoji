@@ -181,11 +181,11 @@ function DetailCard({
 
 function GroupHeader({ title }: { title: string }) {
   return (
-    <div className="mb-12">
+    <div className="mb-6 md:mb-12">
       <h2
         className="text-black"
         style={{
-          fontSize: "clamp(28px, 5vw, 48px)",
+          fontSize: "clamp(22px, 5vw, 48px)",
           fontWeight: 900,
           letterSpacing: "-0.03em",
           lineHeight: 1.05,
@@ -193,7 +193,7 @@ function GroupHeader({ title }: { title: string }) {
       >
         {title}
       </h2>
-      <div className="mt-4 w-12 h-0.5" style={{ backgroundColor: "#00C2D1" }} />
+      <div className="mt-3 md:mt-4 w-12 h-0.5" style={{ backgroundColor: "#00C2D1" }} />
     </div>
   );
 }
@@ -205,14 +205,14 @@ export function Activities({ dict }: { dict: Dictionary }) {
   return (
     <section
       id="activities"
-      className="py-24 px-5 md:px-8"
+      className="py-14 md:py-24 px-5 md:px-8"
       style={{ backgroundColor: "#ffffff" }}
     >
       <div className="max-w-7xl mx-auto">
         <div className="scroll-mt-20">
           <GroupHeader title={dict.activities.title} />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6 mb-24">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6 mb-14 md:mb-24">
           {activityItems.map((item) => (
             <ActivityCard key={item.id} item={item} detailChip={dict.activities.detailChip} />
           ))}
