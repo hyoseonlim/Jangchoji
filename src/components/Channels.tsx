@@ -143,30 +143,19 @@ export function Channels({ dict }: { dict: Dictionary }) {
                 </span>
               </div>
             </a>
-            <h3
-              className="text-black mb-2"
-              style={{ fontSize: "20px", fontWeight: 800, letterSpacing: "-0.02em" }}
-            >
-              {c.youtube.name}
-            </h3>
-            <p
-              className="text-black/60 mb-8"
-              style={{ fontSize: "14px", lineHeight: 1.65 }}
-            >
-              {c.youtube.description}
-            </p>
-            <a
-              href={YOUTUBE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-auto flex items-center justify-between pt-5 group/cta"
-              style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}
-            >
-              <span className="text-black font-bold" style={{ fontSize: "14px" }}>
-                {c.youtube.cta}
-              </span>
-              <span
-                className="flex items-center justify-center transition-all group-hover/cta:translate-x-1"
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h3
+                className="text-black min-w-0 truncate"
+                style={{ fontSize: "20px", fontWeight: 800, letterSpacing: "-0.02em" }}
+              >
+                {c.youtube.name}
+              </h3>
+              <a
+                href={YOUTUBE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={c.youtube.cta}
+                className="flex items-center justify-center flex-shrink-0 transition-transform hover:-translate-y-0.5"
                 style={{
                   width: "32px",
                   height: "32px",
@@ -174,11 +163,16 @@ export function Channels({ dict }: { dict: Dictionary }) {
                   color: "#ffffff",
                   borderRadius: "50%",
                 }}
-                aria-hidden="true"
               >
                 <ArrowUpRightIcon size={16} strokeWidth={2.4} />
-              </span>
-            </a>
+              </a>
+            </div>
+            <p
+              className="text-black/60"
+              style={{ fontSize: "14px", lineHeight: 1.65 }}
+            >
+              {c.youtube.description}
+            </p>
           </article>
 
           {/* Blog card */}
@@ -243,27 +237,15 @@ export function Channels({ dict }: { dict: Dictionary }) {
                 {c.blog.overlay}
               </div>
             </div>
-            <h3
-              className="text-black mb-2"
-              style={{ fontSize: "20px", fontWeight: 800, letterSpacing: "-0.02em" }}
-            >
-              {c.blog.name}
-            </h3>
-            <p
-              className="text-black/60 mb-8"
-              style={{ fontSize: "14px", lineHeight: 1.65 }}
-            >
-              {c.blog.description}
-            </p>
-            <div
-              className="mt-auto flex items-center justify-between pt-5"
-              style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}
-            >
-              <span className="text-black font-bold" style={{ fontSize: "14px" }}>
-                {c.blog.cta}
-              </span>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h3
+                className="text-black min-w-0 truncate"
+                style={{ fontSize: "20px", fontWeight: 800, letterSpacing: "-0.02em" }}
+              >
+                {c.blog.name}
+              </h3>
               <span
-                className="flex items-center justify-center transition-all group-hover:translate-x-1"
+                className="flex items-center justify-center flex-shrink-0 transition-transform group-hover:-translate-y-0.5"
                 style={{
                   width: "32px",
                   height: "32px",
@@ -276,6 +258,12 @@ export function Channels({ dict }: { dict: Dictionary }) {
                 <ArrowUpRightIcon size={16} strokeWidth={2.4} />
               </span>
             </div>
+            <p
+              className="text-black/60"
+              style={{ fontSize: "14px", lineHeight: 1.65 }}
+            >
+              {c.blog.description}
+            </p>
           </a>
 
           {/* Instagram card */}
@@ -340,27 +328,15 @@ export function Channels({ dict }: { dict: Dictionary }) {
                 <InstagramIcon size={14} strokeWidth={2.4} />
               </div>
             </div>
-            <h3
-              className="text-black mb-2"
-              style={{ fontSize: "20px", fontWeight: 800, letterSpacing: "-0.02em" }}
-            >
-              {c.instagram.name}
-            </h3>
-            <p
-              className="text-black/60 mb-8"
-              style={{ fontSize: "14px", lineHeight: 1.65 }}
-            >
-              {c.instagram.description}
-            </p>
-            <div
-              className="mt-auto flex items-center justify-between pt-5"
-              style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}
-            >
-              <span className="text-black font-bold" style={{ fontSize: "14px" }}>
-                {c.instagram.cta}
-              </span>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h3
+                className="text-black min-w-0 truncate"
+                style={{ fontSize: "20px", fontWeight: 800, letterSpacing: "-0.02em" }}
+              >
+                {c.instagram.name}
+              </h3>
               <span
-                className="flex items-center justify-center transition-all group-hover:translate-x-1"
+                className="flex items-center justify-center flex-shrink-0 transition-transform group-hover:-translate-y-0.5"
                 style={{
                   width: "32px",
                   height: "32px",
@@ -373,6 +349,12 @@ export function Channels({ dict }: { dict: Dictionary }) {
                 <ArrowUpRightIcon size={16} strokeWidth={2.4} />
               </span>
             </div>
+            <p
+              className="text-black/60"
+              style={{ fontSize: "14px", lineHeight: 1.65 }}
+            >
+              {c.instagram.description}
+            </p>
           </a>
         </div>
       </div>

@@ -338,6 +338,39 @@ export function Pricing({ dict }: { dict: Dictionary }) {
             )}
           </ul>
         </div>
+
+        <div
+          className="mt-16 p-6 md:p-8"
+          style={{
+            backgroundColor: "#fff",
+            border: "1px solid rgba(0,0,0,0.08)",
+            borderRadius: "3px",
+          }}
+        >
+          <p
+            className="text-black mb-4"
+            style={{ fontSize: "16px", fontWeight: 800, letterSpacing: "-0.02em" }}
+          >
+            {dict.pricing.hours.title}
+          </p>
+          <ul
+            className="space-y-2 text-black/75"
+            style={{ fontSize: "14px", lineHeight: 1.7 }}
+          >
+            {dict.pricing.hours.lines.map((line) => (
+              <li key={line} className="flex items-start gap-2">
+                <span style={{ color: "#00C2D1", flexShrink: 0 }}>•</span>
+                {line}
+              </li>
+            ))}
+          </ul>
+          <p
+            className="mt-3 text-black/60"
+            style={{ fontSize: "13px", lineHeight: 1.7 }}
+          >
+            {dict.pricing.hours.note}
+          </p>
+        </div>
       </div>
     </section>
   );

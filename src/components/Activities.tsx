@@ -1,9 +1,25 @@
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { RotatingImage } from "./ui/RotatingImage";
 import { galleries } from "../data/imageGalleries";
-import type { Dictionary } from "@/i18n";
+import type { Dictionary, Locale } from "@/i18n";
 
 type ActivityItem = Dictionary["activities"]["items"][number];
+
+const detailSlugs = new Set([
+  "rides",
+  "ski",
+  "wakesurf",
+  "waterpark",
+  "bbq",
+  "cafe",
+  "rooftop",
+  "stay",
+]);
+
+function resolveHref(item: ActivityItem, locale: Locale): string | undefined {
+  if (detailSlugs.has(item.id)) return `/${locale}/activities/${item.id}`;
+  return item.href;
+}
 
 const galleryById: Record<string, readonly string[]> = {
   rides: galleries.rides,
@@ -28,17 +44,55 @@ const intervalMsById: Record<string, number | undefined> = {
 function ActivityCard({
   item,
   detailChip,
+  href,
 }: {
   item: ActivityItem;
   detailChip: string;
+  href?: string;
 }) {
-  const clickable = Boolean(item.href);
+  const clickable = Boolean(href);
   const gallery = galleryById[item.id] ?? [];
   const fallback = fallbackImageById[item.id];
   const interval = intervalMsById[item.id] ?? 3800;
 
-  const media = (
-    <>
+  const header = (
+    <div
+      className="flex items-center justify-between gap-2 px-4 py-3 md:px-5 md:py-4"
+      style={{ backgroundColor: "#111" }}
+    >
+      <h3
+        className="text-white min-w-0 truncate"
+        style={{
+          fontSize: "clamp(15px, 4.2vw, 18px)",
+          fontWeight: 800,
+          letterSpacing: "-0.02em",
+          lineHeight: 1.2,
+        }}
+      >
+        {item.title}
+      </h3>
+      {clickable && (
+        <span
+          className="inline-flex items-center gap-1 px-2 py-1 flex-shrink-0 transition-transform group-hover:-translate-y-0.5"
+          style={{
+            backgroundColor: "#00C2D1",
+            color: "#000",
+            fontSize: "11px",
+            fontWeight: 800,
+            borderRadius: "2px",
+            letterSpacing: "0.02em",
+          }}
+        >
+          {detailChip}
+        </span>
+      )}
+    </div>
+  );
+
+  const image = (
+    <div
+      className="relative overflow-hidden bg-black w-full aspect-[16/9] md:aspect-[4/3]"
+    >
       <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-[1.06]">
         {gallery.length > 0 ? (
           <RotatingImage
@@ -54,60 +108,32 @@ function ActivityCard({
           />
         ) : null}
       </div>
-
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            "linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.35) 45%, transparent 70%)",
-        }}
-      />
-
-      {clickable && (
-        <div
-          className="absolute top-3 right-3 inline-flex items-center gap-1 px-2.5 py-1 transition-transform group-hover:-translate-y-0.5"
-          style={{
-            backgroundColor: "#00C2D1",
-            color: "#000",
-            fontSize: "11px",
-            fontWeight: 800,
-            borderRadius: "2px",
-            letterSpacing: "0.02em",
-          }}
-        >
-          {detailChip}
-        </div>
-      )}
-
-      <div className="absolute bottom-0 left-0 right-0 p-5 md:p-6">
-        <h3
-          className="text-white"
-          style={{
-            fontSize: "22px",
-            fontWeight: 900,
-            letterSpacing: "-0.02em",
-            lineHeight: 1.15,
-            textShadow: "0 1px 6px rgba(0,0,0,0.35)",
-          }}
-        >
-          {item.title}
-        </h3>
-      </div>
-    </>
+    </div>
   );
 
   const commonClass =
-    "group relative block overflow-hidden bg-black aspect-[8/9] md:aspect-[4/5]" +
+    "group relative block overflow-hidden bg-white flex flex-col" +
     (clickable ? " cursor-pointer" : "");
-  const commonStyle = { borderRadius: "3px" };
+  const commonStyle = {
+    borderRadius: "3px",
+    border: "1px solid rgba(0,0,0,0.08)",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+  };
 
-  return clickable ? (
-    <a href={item.href} className={commonClass} style={commonStyle} aria-label={item.title}>
-      {media}
+  const body = (
+    <>
+      {header}
+      {image}
+    </>
+  );
+
+  return clickable && href ? (
+    <a href={href} className={commonClass} style={commonStyle} aria-label={item.title}>
+      {body}
     </a>
   ) : (
     <article className={commonClass} style={commonStyle} aria-label={item.title}>
-      {media}
+      {body}
     </article>
   );
 }
@@ -115,9 +141,11 @@ function ActivityCard({
 function DetailCard({
   item,
   detailLink,
+  href,
 }: {
   item: ActivityItem;
   detailLink: string;
+  href?: string;
 }) {
   const gallery = galleryById[item.id] ?? [];
   const fallback = fallbackImageById[item.id];
@@ -162,9 +190,9 @@ function DetailCard({
             {item.description}
           </p>
         )}
-        {item.href && (
+        {href && (
           <a
-            href={item.href}
+            href={href}
             className="mt-4 inline-flex items-center gap-1 text-black font-bold border-b-2 border-black pb-0.5 hover:border-[#00C2D1] hover:text-[#00C2D1] transition-colors duration-200 self-start"
             style={{ fontSize: "13px" }}
           >
@@ -198,7 +226,7 @@ function GroupHeader({ title }: { title: string }) {
   );
 }
 
-export function Activities({ dict }: { dict: Dictionary }) {
+export function Activities({ dict, locale }: { dict: Dictionary; locale: Locale }) {
   const activityItems = dict.activities.items.filter((i) => i.group === "activities");
   const relaxItems = dict.activities.items.filter((i) => i.group === "relaxDine");
 
@@ -212,9 +240,14 @@ export function Activities({ dict }: { dict: Dictionary }) {
         <div className="scroll-mt-20">
           <GroupHeader title={dict.activities.title} />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6 mb-14 md:mb-24">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-14 md:mb-24">
           {activityItems.map((item) => (
-            <ActivityCard key={item.id} item={item} detailChip={dict.activities.detailChip} />
+            <ActivityCard
+              key={item.id}
+              item={item}
+              detailChip={dict.activities.detailChip}
+              href={resolveHref(item, locale)}
+            />
           ))}
         </div>
 
@@ -223,7 +256,12 @@ export function Activities({ dict }: { dict: Dictionary }) {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
           {relaxItems.map((item) => (
-            <DetailCard key={item.id} item={item} detailLink={dict.activities.detailLink} />
+            <DetailCard
+              key={item.id}
+              item={item}
+              detailLink={dict.activities.detailLink}
+              href={resolveHref(item, locale)}
+            />
           ))}
         </div>
       </div>

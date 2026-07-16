@@ -54,7 +54,7 @@ export const ko = {
     activitiesItems: [
       { text: "놀이기구", href: "#rides" },
       { text: "수상스키·웨이크보드", href: "#activities" },
-      { text: "웨이크서핑", href: "#activities" },
+      { text: "웨이크서핑 (인보트)", href: "#activities" },
       { text: "워터파크", href: "#activities" },
     ],
     relaxDineLabel: "편의 · 휴식",
@@ -74,7 +74,7 @@ export const ko = {
     title: "액티비티",
     relaxTag: "편의 · 휴식",
     relaxTitle: "편의 · 휴식",
-    detailChip: "상세 →",
+    detailChip: "자세히 →",
     detailLink: "자세히 보기",
     items: [
       {
@@ -95,8 +95,8 @@ export const ko = {
       {
         id: "wakesurf",
         group: "activities" as const,
-        title: "웨이크서핑",
-        subtitle: "웨이크서핑",
+        title: "웨이크서핑 (인보트)",
+        subtitle: "웨이크서핑 · 인보트",
         alt: "파도 위에서 웨이크서핑을 즐기는 모습",
       },
       {
@@ -180,9 +180,9 @@ export const ko = {
         items: [
           { label: "놀이기구 3가지", price: 28000 },
           { label: "놀이기구 5가지", price: 45000 },
-          { label: "놀이기구 오전 무제한", price: 55000 },
-          { label: "놀이기구 오후 무제한", price: 65000 },
-          { label: "놀이기구 종일 무제한", price: 75000 },
+          { label: "놀이기구 오전무제한", price: 55000 },
+          { label: "놀이기구 오후무제한", price: 65000 },
+          { label: "놀이기구 종일무제한", price: 75000 },
           { label: "플라이피쉬", price: 15000, note: "1인당" },
           { label: "워터파크만 이용", price: 10000 },
         ],
@@ -219,6 +219,14 @@ export const ko = {
       transferPrefix: "계좌이체",
       holderPrefix: "예금주",
     },
+    hours: {
+      title: "빠지 수상레저 운영시간",
+      lines: [
+        "주말 · 성수기: 09:00 – 18:00",
+        "비수기 평일: 10:00 – 18:00",
+      ],
+      note: "바베큐는 빠지 수상레저 영업 종료 후 운영됩니다 (19:00~).",
+    },
     packages: {
       tag: "숙박 패키지",
       title: "숙박 패키지",
@@ -235,59 +243,226 @@ export const ko = {
         bbqPrefix: "무제한 BBQ 구성",
         under4: "4인 미만 시 추가요금 발생",
       },
-      bbqComposition: "고기 · 밥 · 쌈장 · 쌈무 · 김치 · 소세지 · 무말랭이 · 일회용품",
+      bbqComposition: "고기 · 밥 · 소세지 · 김치 · 쌈장 · 쌈무 · 새송이버섯 · 일회용품",
       rows: {
         peak: {
           "4": [
             { config: "숙박 + 놀이기구 3종", weekday: 65000, saturday: 75000 },
             { config: "숙박 + 놀이기구 5종", weekday: 79000, saturday: 89000 },
-            { config: "숙박 + 놀이기구 오전", weekday: 89000, saturday: 99000 },
-            { config: "숙박 + 놀이기구 오후", weekday: 99000, saturday: 109000 },
-            { config: "숙박 + 놀이기구 종일", weekday: 109000, saturday: 119000 },
+            { config: "숙박 + 놀이기구 오전무제한", weekday: 89000, saturday: 99000 },
+            { config: "숙박 + 놀이기구 오후무제한", weekday: 99000, saturday: 109000 },
+            { config: "숙박 + 놀이기구 종일무제한", weekday: 109000, saturday: 119000 },
             { config: "숙박 + 놀이기구 3종 + BBQ", weekday: 94000, saturday: 104000 },
             { config: "숙박 + 놀이기구 5종 + BBQ", weekday: 108000, saturday: 118000 },
-            { config: "숙박 + 놀이기구 오전 + BBQ", weekday: 118000, saturday: 128000 },
-            { config: "숙박 + 놀이기구 오후 + BBQ", weekday: 128000, saturday: 138000 },
-            { config: "숙박 + 놀이기구 종일 + BBQ", weekday: 138000, saturday: 148000 },
+            { config: "숙박 + 놀이기구 오전무제한 + BBQ", weekday: 118000, saturday: 128000 },
+            { config: "숙박 + 놀이기구 오후무제한 + BBQ", weekday: 128000, saturday: 138000 },
+            { config: "숙박 + 놀이기구 종일무제한 + BBQ", weekday: 138000, saturday: 148000 },
           ],
           "2-3": [
             { config: "숙박 + 놀이기구 3종", weekday: 75000, saturday: 85000 },
             { config: "숙박 + 놀이기구 5종", weekday: 90000, saturday: 100000 },
-            { config: "숙박 + 놀이기구 오전", weekday: 100000, saturday: 110000 },
-            { config: "숙박 + 놀이기구 오후", weekday: 110000, saturday: 120000 },
-            { config: "숙박 + 놀이기구 종일", weekday: 120000, saturday: 130000 },
+            { config: "숙박 + 놀이기구 오전무제한", weekday: 100000, saturday: 110000 },
+            { config: "숙박 + 놀이기구 오후무제한", weekday: 110000, saturday: 120000 },
+            { config: "숙박 + 놀이기구 종일무제한", weekday: 120000, saturday: 130000 },
             { config: "숙박 + 놀이기구 3종 + BBQ", weekday: 104000, saturday: 114000 },
             { config: "숙박 + 놀이기구 5종 + BBQ", weekday: 119000, saturday: 129000 },
-            { config: "숙박 + 놀이기구 오전 + BBQ", weekday: 129000, saturday: 139000 },
-            { config: "숙박 + 놀이기구 오후 + BBQ", weekday: 139000, saturday: 149000 },
-            { config: "숙박 + 놀이기구 종일 + BBQ", weekday: 149000, saturday: 159000 },
+            { config: "숙박 + 놀이기구 오전무제한 + BBQ", weekday: 129000, saturday: 139000 },
+            { config: "숙박 + 놀이기구 오후무제한 + BBQ", weekday: 139000, saturday: 149000 },
+            { config: "숙박 + 놀이기구 종일무제한 + BBQ", weekday: 149000, saturday: 159000 },
           ],
         },
         off: {
           "4": [
             { config: "숙박 + 놀이기구 3종", weekday: 55000, saturday: 65000 },
             { config: "숙박 + 놀이기구 5종", weekday: 69000, saturday: 79000 },
-            { config: "숙박 + 놀이기구 오전", weekday: 79000, saturday: 89000 },
-            { config: "숙박 + 놀이기구 오후", weekday: 89000, saturday: 99000 },
-            { config: "숙박 + 놀이기구 종일", weekday: 99000, saturday: 109000 },
+            { config: "숙박 + 놀이기구 오전무제한", weekday: 79000, saturday: 89000 },
+            { config: "숙박 + 놀이기구 오후무제한", weekday: 89000, saturday: 99000 },
+            { config: "숙박 + 놀이기구 종일무제한", weekday: 99000, saturday: 109000 },
             { config: "숙박 + 놀이기구 3종 + BBQ", weekday: 84000, saturday: 94000 },
             { config: "숙박 + 놀이기구 5종 + BBQ", weekday: 98000, saturday: 108000 },
-            { config: "숙박 + 놀이기구 오전 + BBQ", weekday: 108000, saturday: 118000 },
-            { config: "숙박 + 놀이기구 오후 + BBQ", weekday: 118000, saturday: 128000 },
-            { config: "숙박 + 놀이기구 종일 + BBQ", weekday: 128000, saturday: 138000 },
+            { config: "숙박 + 놀이기구 오전무제한 + BBQ", weekday: 108000, saturday: 118000 },
+            { config: "숙박 + 놀이기구 오후무제한 + BBQ", weekday: 118000, saturday: 128000 },
+            { config: "숙박 + 놀이기구 종일무제한 + BBQ", weekday: 128000, saturday: 138000 },
           ],
           "2-3": [
             { config: "숙박 + 놀이기구 3종", weekday: 65000, saturday: 75000 },
             { config: "숙박 + 놀이기구 5종", weekday: 80000, saturday: 90000 },
-            { config: "숙박 + 놀이기구 오전", weekday: 90000, saturday: 100000 },
-            { config: "숙박 + 놀이기구 오후", weekday: 100000, saturday: 110000 },
-            { config: "숙박 + 놀이기구 종일", weekday: 110000, saturday: 120000 },
+            { config: "숙박 + 놀이기구 오전무제한", weekday: 90000, saturday: 100000 },
+            { config: "숙박 + 놀이기구 오후무제한", weekday: 100000, saturday: 110000 },
+            { config: "숙박 + 놀이기구 종일무제한", weekday: 110000, saturday: 120000 },
             { config: "숙박 + 놀이기구 3종 + BBQ", weekday: 94000, saturday: 104000 },
             { config: "숙박 + 놀이기구 5종 + BBQ", weekday: 109000, saturday: 119000 },
-            { config: "숙박 + 놀이기구 오전 + BBQ", weekday: 119000, saturday: 129000 },
-            { config: "숙박 + 놀이기구 오후 + BBQ", weekday: 129000, saturday: 139000 },
-            { config: "숙박 + 놀이기구 종일 + BBQ", weekday: 139000, saturday: 149000 },
+            { config: "숙박 + 놀이기구 오전무제한 + BBQ", weekday: 119000, saturday: 129000 },
+            { config: "숙박 + 놀이기구 오후무제한 + BBQ", weekday: 129000, saturday: 139000 },
+            { config: "숙박 + 놀이기구 종일무제한 + BBQ", weekday: 139000, saturday: 149000 },
           ],
+        },
+      },
+    },
+  },
+
+  infoGallery: {
+    tag: "이용 안내",
+    title: "이미지로 보는 건전한레저 정보",
+    description:
+      "건전한 레저의 이용 안내, 요금, 시설 정보를 이미지로 한 번에 확인하세요.",
+    cta: "이미지로 보기",
+    modalTitle: "건전한레저 정보 갤러리",
+    close: "닫기",
+    prev: "이전",
+    next: "다음",
+    imageAlt: "건전한레저 정보 {n}",
+    counter: "{current} / {total}",
+  },
+
+  detailPages: {
+    backLabel: "← 돌아가기",
+    reserveCta: "네이버 예약하기",
+    priceHeading: "이용 요금",
+    infoHeading: "안내 사항",
+    galleryHeading: "사진",
+    items: {
+      rides: {
+        title: "놀이기구",
+        subtitle: "물놀이 놀이기구 8종",
+        intro:
+          "짜릿한 스릴부터 안정적인 라이딩까지, 8종의 놀이기구를 준비했습니다. 놀이기구 이용 시 슬라이드 및 워터파크는 무료로 이용하실 수 있습니다.",
+        prices: [],
+        info: [
+          "놀이기구 이용 시 슬라이드 · 워터파크 무료 이용",
+          "구명조끼 착용 필수 (무료 제공)",
+          "안전수칙을 준수하여 즐겨주세요",
+        ],
+      },
+      ski: {
+        title: "수상스키 · 웨이크보드",
+        subtitle: "초보 강습부터 경험자 라이딩까지",
+        intro:
+          "지상강습 1회와 수상강습 2회로 구성된 초보 강습으로 안전하게 시작하실 수 있습니다. 초보 강습을 이수하신 경험자분들은 라이딩만 별도로 예약하실 수도 있습니다.",
+        prices: [
+          {
+            label: "초보 강습",
+            price: 65000,
+            note: "투스키 · 웨이크보드 가능 · 지상강습 1회 + 라이딩 2회",
+          },
+          {
+            label: "경험자 라이딩",
+            price: 28000,
+            note: "초보 강습 이수 후 이용 가능",
+          },
+        ],
+        info: [
+          "구명조끼 착용 필수 (무료 제공)",
+          "전문 강사가 처음부터 끝까지 함께합니다",
+          "수영을 못하셔도 참여 가능합니다",
+        ],
+      },
+      wakesurf: {
+        title: "웨이크서핑 (인보트)",
+        subtitle: "국내 단 3대 · 럭셔리 인보트 보팅",
+        intro:
+          "인보트에 탑승하여 즐기는 웨이크서핑. 인보트가 만들어내는 큰 파도 위에서 서핑 감성을 그대로 느껴보세요.",
+        prices: [
+          {
+            label: "인보트 보팅",
+            price: 25000,
+            note: "1인당 · 최소 5인부터 이용 가능",
+          },
+        ],
+        info: [
+          "15분 소요 · 최소 5인 이상 예약",
+          "구명조끼 무료 제공",
+          "웨이크서핑은 인보트 승선 상태로 진행됩니다",
+        ],
+      },
+      waterpark: {
+        title: "워터파크",
+        subtitle: "물놀이 · 슬라이드 · 워터파크 시설",
+        intro:
+          "놀이기구를 이용하지 않으셔도 워터파크만 단독으로 이용하실 수 있습니다. 아이들과 가족 단위 방문객도 부담 없이 즐기세요.",
+        prices: [{ label: "워터파크만 이용", price: 10000 }],
+        info: [
+          "놀이기구 이용 시 워터파크 무료 이용 가능",
+          "구명조끼 무료 제공 · 샤워실 완비",
+        ],
+      },
+      bbq: {
+        title: "무제한 바베큐",
+        subtitle: "물놀이 후 즐기는 프리미엄 바베큐",
+        intro:
+          "고기, 밥, 소세지, 김치, 쌈장, 쌈무, 새송이버섯, 일회용품이 포함된 무제한 바베큐. 물놀이 후 든든하고 여유롭게 즐겨보세요.",
+        prices: [
+          { label: "패키지 포함 시", price: 29000, note: "1인당" },
+          { label: "당일 이용 시", price: 30000, note: "1인당" },
+          {
+            label: "숯만 이용 (4인 기준)",
+            price: 30000,
+            note: "1인 추가 시 +₩5,000",
+          },
+        ],
+        info: [
+          "무제한 바베큐 제공 시간: 주말 기준 19:00 – 21:00",
+          "21:00 이후부터는 자유롭게 자리에서 남은 음식을 더 드셔도 됩니다",
+          "구성: 고기 · 밥 · 소세지 · 김치 · 쌈장 · 쌈무 · 새송이버섯 · 일회용품",
+        ],
+      },
+      cafe: {
+        title: "배카페",
+        subtitle: "물 위에 떠 있는 프라이빗 카페",
+        intro:
+          "물 위에 떠 있는 배 위에서 즐기는 특별한 시간. 프라이빗 공간 대여로 나만의 파티나 모임도 가능합니다.",
+        prices: [],
+        info: [
+          "프라이빗 공간 대여 가능",
+          "노래방 이용 가능",
+          "플레이스테이션 게임 · 영화 시청 가능",
+          "탁 트인 호수 뷰와 편안한 소파",
+        ],
+      },
+      rooftop: {
+        title: "루프탑",
+        subtitle: "여유롭게 힐링하는 루프탑 공간",
+        intro:
+          "자유롭게 음식을 즐기며 여유와 힐링을 만끽할 수 있는 루프탑 공간. 태닝과 포토존까지 준비되어 있습니다.",
+        prices: [],
+        info: [
+          "자유롭게 음식 섭취 가능",
+          "커피 및 음료 섭취 가능",
+          "선탠(태닝) 가능",
+          "포토존 완비",
+        ],
+      },
+      stay: {
+        title: "숙박",
+        subtitle: "4인실 · 5인실 · 6인실 · 8인실",
+        intro:
+          "가평의 자연 속에서 편안한 하룻밤. 4인실부터 8인실까지 다양한 객실을 제공합니다. 5인실 · 6인실 · 8인실은 다락방이 포함되어 있어 추가 인원 이용이 가능합니다.",
+        prices: [],
+        info: [
+          "4인실: 다락방 없음 · 최대 4인",
+          "5인실: 다락방 포함 · 최대 6인",
+          "6인실: 다락방 포함 · 최대 8인",
+          "8인실: 다락방 포함 · 최대 10인",
+        ],
+        rooms: [
+          { key: "stay4", title: "4인실", desc: "다락방 없음 · 최대 4인" },
+          { key: "stay5", title: "5인실", desc: "다락방 포함 · 최대 6인까지 가능" },
+          { key: "stay6", title: "6인실", desc: "다락방 포함 · 최대 8인까지 가능" },
+          { key: "stay8", title: "8인실", desc: "다락방 포함 · 최대 10인까지 가능" },
+        ],
+        amenities: {
+          title: "객실 구비 품목",
+          items: [
+            "수저세트",
+            "냄비 · 후라이팬",
+            "밥그릇 · 접시 · 대접",
+            "국자 · 가위 · 집게",
+            "냉장고 · 전자레인지",
+            "TV · 에어컨",
+            "식탁",
+            "수건",
+          ],
+          note: "샤워용품은 구비되어 있지 않으니 개인이 지참하여 방문해 주세요.",
         },
       },
     },
@@ -384,7 +559,7 @@ export const ko = {
         id: "bbq",
         question: "무제한 BBQ에는 무엇이 포함되나요?",
         answer:
-          "무제한 BBQ 구성은 고기, 밥, 쌈장, 쌈무, 김치, 소세지, 무말랭이, 일회용품입니다. 숙박 패키지에 BBQ 옵션을 추가하시면 이용하실 수 있습니다.",
+          "무제한 BBQ 구성은 고기, 밥, 소세지, 김치, 쌈장, 쌈무, 새송이버섯, 일회용품입니다. 숙박 패키지에 BBQ 옵션을 추가하시면 이용하실 수 있습니다.",
       },
       {
         id: "peak-season",

@@ -1,5 +1,16 @@
 import type { Dictionary } from "@/i18n";
 
+const rideImageByNo: Record<number, string> = {
+  1: "/images/rides/flyfish.jpeg",
+  2: "/images/rides/ufo.png",
+  3: "/images/rides/waffle.jpeg",
+  4: "/images/rides/wild_pang_pang.jpeg",
+  5: "/images/rides/bandwagon.png",
+  6: "/images/rides/lotus.png",
+  7: "/images/rides/peanut_boat.jpeg",
+  8: "/images/rides/banana_boat.png",
+};
+
 export function Rides({ dict }: { dict: Dictionary }) {
   return (
     <section
@@ -40,66 +51,85 @@ export function Rides({ dict }: { dict: Dictionary }) {
         </div>
 
         <ol
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5"
+          className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5"
           style={{ listStyle: "none", padding: 0 }}
         >
-          {dict.rides.items.map((ride) => (
-            <li
-              key={ride.no}
-              className="flex flex-col p-6 bg-white transition-transform hover:-translate-y-1"
-              style={{
-                border: "1px solid rgba(0,0,0,0.08)",
-                borderRadius: "3px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-              }}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <span
-                  className="inline-flex items-center justify-center"
-                  style={{
-                    width: "32px",
-                    height: "32px",
-                    backgroundColor: "#111",
-                    color: "#fff",
-                    fontSize: "13px",
-                    fontWeight: 800,
-                    borderRadius: "50%",
-                  }}
-                  aria-label={dict.rides.itemNoAria.replace("{n}", String(ride.no))}
-                >
-                  {ride.no}
-                </span>
-                <span
-                  className="inline-flex items-center px-2 py-0.5"
-                  style={{
-                    backgroundColor: "rgba(0,194,209,0.15)",
-                    color: "#009aa8",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    borderRadius: "2px",
-                  }}
-                >
-                  {ride.capacity}
-                </span>
-              </div>
-              <h3
-                className="text-black mb-2"
+          {dict.rides.items.map((ride) => {
+            const image = rideImageByNo[ride.no];
+            return (
+              <li
+                key={ride.no}
+                className="flex flex-col bg-white transition-transform hover:-translate-y-1 overflow-hidden"
                 style={{
-                  fontSize: "18px",
-                  fontWeight: 800,
-                  letterSpacing: "-0.02em",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  borderRadius: "3px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
                 }}
               >
-                {ride.name}
-              </h3>
-              <p
-                className="text-black/60"
-                style={{ fontSize: "13px", lineHeight: 1.6 }}
-              >
-                {ride.description}
-              </p>
-            </li>
-          ))}
+                {image && (
+                  <div
+                    className="relative w-full overflow-hidden"
+                    style={{ aspectRatio: "1 / 1", backgroundColor: "#f4f4f4" }}
+                  >
+                    <img
+                      src={image}
+                      alt={ride.name}
+                      loading="lazy"
+                      decoding="async"
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                <div className="flex flex-col p-4 md:p-6">
+                  <div className="flex items-start justify-between mb-3 md:mb-4 gap-2">
+                    <span
+                      className="inline-flex items-center justify-center flex-shrink-0"
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        backgroundColor: "#111",
+                        color: "#fff",
+                        fontSize: "12px",
+                        fontWeight: 800,
+                        borderRadius: "50%",
+                      }}
+                      aria-label={dict.rides.itemNoAria.replace("{n}", String(ride.no))}
+                    >
+                      {ride.no}
+                    </span>
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 flex-shrink-0"
+                      style={{
+                        backgroundColor: "rgba(0,194,209,0.15)",
+                        color: "#009aa8",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        borderRadius: "2px",
+                      }}
+                    >
+                      {ride.capacity}
+                    </span>
+                  </div>
+                  <h3
+                    className="text-black mb-1.5 md:mb-2"
+                    style={{
+                      fontSize: "clamp(14px, 3.6vw, 18px)",
+                      fontWeight: 800,
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    {ride.name}
+                  </h3>
+                  <p
+                    className="text-black/60"
+                    style={{ fontSize: "12px", lineHeight: 1.55 }}
+                  >
+                    {ride.description}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
         </ol>
 
         <p

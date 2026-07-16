@@ -5,6 +5,7 @@ import { Hero } from "@/components/Hero";
 import { Activities } from "@/components/Activities";
 import { Rides } from "@/components/Rides";
 import { Pricing } from "@/components/Pricing";
+import { InfoGallery } from "@/components/InfoGallery";
 import { Safety } from "@/components/Safety";
 import { FAQSection } from "@/components/FAQSection";
 import { MinorPolicy } from "@/components/MinorPolicy";
@@ -26,9 +27,10 @@ export default async function HomePage({
       <Navigation dict={dict} locale={locale as Locale} />
       <main>
         <Hero dict={dict} />
-        <Activities dict={dict} />
+        <Activities dict={dict} locale={locale as Locale} />
         <Rides dict={dict} />
         <Pricing dict={dict} />
+        <InfoGallery dict={dict} />
         <Safety dict={dict} />
         <FAQSection dict={dict} />
         <MinorPolicy dict={dict} />
