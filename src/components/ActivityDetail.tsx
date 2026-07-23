@@ -532,6 +532,9 @@ function StayRooms({ dict }: { dict: Dictionary }) {
 }
 
 function RidesList({ dict }: { dict: Dictionary }) {
+  const gallery = galleries.activityDetails.rides;
+  const lightbox = useLightbox(gallery);
+
   return (
     <section>
       <div
@@ -634,6 +637,54 @@ function RidesList({ dict }: { dict: Dictionary }) {
           );
         })}
       </ol>
+
+      {gallery.length > 0 && (
+        <div className="mt-12">
+          <h2
+            className="text-black mb-4"
+            style={{ fontSize: "20px", fontWeight: 800, letterSpacing: "-0.02em" }}
+          >
+            {dict.detailPages.galleryHeading}
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
+            {gallery.map((src, i) => (
+              <button
+                key={src}
+                type="button"
+                onClick={() => lightbox.setOpenIndex(i)}
+                className="group relative block overflow-hidden bg-white cursor-pointer"
+                style={{
+                  aspectRatio: "1 / 1",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  borderRadius: "3px",
+                }}
+                aria-label={`${dict.detailPages.items.rides.title} ${i + 1}`}
+              >
+                <img
+                  src={src}
+                  alt={`${dict.detailPages.items.rides.title} ${i + 1}`}
+                  loading="lazy"
+                  decoding="async"
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+              </button>
+            ))}
+          </div>
+          {lightbox.openIndex !== null && (
+            <Lightbox
+              images={gallery}
+              index={lightbox.openIndex}
+              onClose={lightbox.close}
+              onPrev={lightbox.prev}
+              onNext={lightbox.next}
+              alt={dict.detailPages.items.rides.title}
+              closeLabel={dict.infoGallery.close}
+              prevLabel={dict.infoGallery.prev}
+              nextLabel={dict.infoGallery.next}
+            />
+          )}
+        </div>
+      )}
     </section>
   );
 }

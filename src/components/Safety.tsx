@@ -1,6 +1,7 @@
-import type { Dictionary } from "@/i18n";
+import Link from "next/link";
+import type { Dictionary, Locale } from "@/i18n";
 
-export function Safety({ dict }: { dict: Dictionary }) {
+export function Safety({ dict, locale }: { dict: Dictionary; locale: Locale }) {
   return (
     <section
       id="safety"
@@ -86,23 +87,21 @@ export function Safety({ dict }: { dict: Dictionary }) {
               {dict.safety.ctaSubtitle}
             </p>
           </div>
-          <div className="flex gap-3 flex-shrink-0">
+          <div className="flex gap-2 flex-shrink-0">
             <a
               href={`tel:${dict.brand.phone}`}
-              className="inline-flex items-center px-6 py-3 bg-black text-white font-bold transition-opacity hover:opacity-80"
-              style={{ fontSize: "14px", borderRadius: "2px" }}
+              className="inline-flex items-center justify-center px-5 py-2.5 bg-black text-white transition-opacity hover:opacity-80"
+              style={{ fontSize: "14px", fontWeight: 800, borderRadius: "2px", letterSpacing: "-0.01em" }}
             >
               📞 {dict.brand.phone}
             </a>
-            <a
-              href="https://smartstore.naver.com/madski/products/11804623124"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden md:inline-flex items-center px-6 py-3 bg-white text-black font-bold transition-opacity hover:opacity-80"
-              style={{ fontSize: "14px", borderRadius: "2px" }}
+            <Link
+              href={`/${locale}/reserve`}
+              className="hidden md:inline-flex items-center justify-center px-5 py-2.5 transition-opacity hover:opacity-80"
+              style={{ backgroundColor: "#00C2D1", color: "#001518", fontSize: "14px", fontWeight: 800, borderRadius: "2px", letterSpacing: "-0.01em" }}
             >
               {dict.safety.ctaStore}
-            </a>
+            </Link>
           </div>
         </div>
       </div>

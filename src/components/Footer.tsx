@@ -1,8 +1,8 @@
 import { YoutubeIcon, PhoneIcon, MapPinIcon, InstagramIcon } from "lucide-react";
-import type { Dictionary } from "@/i18n";
-import { NaverReserveButton } from "./NaverReserveButton";
+import type { Dictionary, Locale } from "@/i18n";
+import { ReserveButton } from "./ReserveButton";
 
-export function Footer({ dict }: { dict: Dictionary }) {
+export function Footer({ dict, locale }: { dict: Dictionary; locale: Locale }) {
   const year = new Date().getFullYear();
   const f = dict.footer;
 
@@ -202,10 +202,11 @@ export function Footer({ dict }: { dict: Dictionary }) {
               </p>
             </div>
 
-            <NaverReserveButton
+            <ReserveButton
               label={f.reserve}
               size="md"
               fullWidth
+              locale={locale}
               className="mt-5 hidden md:flex"
             />
           </div>

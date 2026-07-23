@@ -26,14 +26,13 @@ const galleryById: Record<string, readonly string[]> = {
   ski: galleries.ski,
   wakesurf: galleries.surf,
   waterpark: galleries.waterpark,
+  bbq: galleries.bbq,
   cafe: galleries.cafe,
   rooftop: galleries.rooftop,
   stay: galleries.stay,
 };
 
-const fallbackImageById: Record<string, string | undefined> = {
-  bbq: "https://images.unsplash.com/photo-1780091606130-2bfc03991da6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=640",
-};
+const fallbackImageById: Record<string, string | undefined> = {};
 
 const intervalMsById: Record<string, number | undefined> = {
   ski: 4400,

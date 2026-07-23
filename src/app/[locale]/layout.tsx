@@ -28,6 +28,13 @@ export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
 
+// OG 이미지 (네이버/카톡/페이스북 등 공유 시 노출). 절대 URL 로 노출되도록
+// metadataBase 를 설정하면 아래 상대경로가 자동으로 절대 URL 로 확장됩니다.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
+const OG_IMAGE_PATH = "/images/main.png";
+const OG_IMAGE_WIDTH = 1200;
+const OG_IMAGE_HEIGHT = 630;
+
 export async function generateMetadata({
   params,
 }: {
@@ -39,7 +46,15 @@ export async function generateMetadata({
   const altLanguages: Record<string, string> = {};
   for (const l of locales) altLanguages[l] = `/${l}`;
 
+  const ogImage = {
+    url: OG_IMAGE_PATH,
+    width: OG_IMAGE_WIDTH,
+    height: OG_IMAGE_HEIGHT,
+    alt: dict.meta.ogTitle,
+  };
+
   return {
+    metadataBase: SITE_URL ? new URL(SITE_URL) : undefined,
     title: dict.meta.title,
     description: dict.meta.description,
     alternates: {
@@ -52,6 +67,13 @@ export async function generateMetadata({
       title: dict.meta.ogTitle,
       description: dict.meta.ogDescription,
       locale: locale === "ko" ? "ko_KR" : "en_US",
+      images: [ogImage],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: dict.meta.ogTitle,
+      description: dict.meta.ogDescription,
+      images: [OG_IMAGE_PATH],
     },
     other: {
       "itemprop:name": dict.meta.siteName,

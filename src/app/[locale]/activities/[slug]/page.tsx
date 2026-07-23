@@ -45,7 +45,7 @@ export default async function ActivityDetailPage({
       <main className="flex-1">
         <ActivityDetail slug={slug} dict={dict} locale={locale} />
       </main>
-      <Footer dict={dict} />
+      <Footer dict={dict} locale={locale as Locale} />
     </div>
   );
 }

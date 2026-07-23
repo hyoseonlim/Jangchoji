@@ -3,7 +3,6 @@ import { getDictionary, isLocale, type Locale } from "@/i18n";
 import { Navigation } from "@/components/Navigation";
 import { Hero } from "@/components/Hero";
 import { Activities } from "@/components/Activities";
-import { Rides } from "@/components/Rides";
 import { Pricing } from "@/components/Pricing";
 import { InfoGallery } from "@/components/InfoGallery";
 import { Safety } from "@/components/Safety";
@@ -26,18 +25,17 @@ export default async function HomePage({
     <div className="min-h-screen">
       <Navigation dict={dict} locale={locale as Locale} />
       <main>
-        <Hero dict={dict} />
+        <Hero dict={dict} locale={locale as Locale} />
         <Activities dict={dict} locale={locale as Locale} />
-        <Rides dict={dict} />
         <Pricing dict={dict} />
         <InfoGallery dict={dict} />
-        <Safety dict={dict} />
+        <Safety dict={dict} locale={locale as Locale} />
         <FAQSection dict={dict} />
         <MinorPolicy dict={dict} />
         <Channels dict={dict} />
         <Directions dict={dict} />
       </main>
-      <Footer dict={dict} />
+      <Footer dict={dict} locale={locale as Locale} />
     </div>
   );
 }

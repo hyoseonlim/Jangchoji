@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { MenuIcon, XIcon, PalmtreeIcon } from "lucide-react";
 import type { Dictionary, Locale } from "@/i18n";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { NaverReserveButton } from "./NaverReserveButton";
+import { ReserveButton } from "./ReserveButton";
 
 export function Navigation({
   dict,
@@ -77,9 +77,10 @@ export function Navigation({
           {/* CTA + Language + Mobile Menu */}
           <div className="flex items-center gap-3">
             <LanguageSwitcher dict={dict} locale={locale} variant="dark" />
-            <NaverReserveButton
+            <ReserveButton
               label={dict.nav.reserve}
               size="sm"
+              locale={locale}
               className="hidden md:inline-flex"
             />
             <button
@@ -119,10 +120,11 @@ export function Navigation({
 
       {/* Mobile sticky bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden px-4 pb-4 pt-2 pointer-events-none">
-        <NaverReserveButton
+        <ReserveButton
           label={dict.nav.reserveMobile}
           size="lg"
           fullWidth
+          locale={locale}
           className="pointer-events-auto shadow-2xl py-2.5"
         />
       </div>

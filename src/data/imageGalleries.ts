@@ -1,6 +1,17 @@
 // Static galleries served from /public/images/<folder>/*.
 // To add images: drop new files into public/images/<folder>/ and append to the list below.
 
+const bbqPhotos = [
+  "/images/바베큐/bbq1.png",
+  "/images/바베큐/bbq2.png",
+  "/images/바베큐/bbq3.png",
+  "/images/바베큐/bbq4.png",
+  "/images/바베큐/bbq5.png",
+  "/images/바베큐/bbq6.jpeg",
+  "/images/바베큐/bbq7.jpeg",
+  "/images/바베큐/bbq8.jpeg",
+];
+
 export const galleries = {
   rides: [
     "/images/놀이기구/ride1.jpeg",
@@ -14,7 +25,6 @@ export const galleries = {
   ski: [
     "/images/스키보드/ski1.jpeg",
     "/images/스키보드/ski2.jpeg",
-    "/images/스키보드/ski3.jpeg",
   ],
   surf: [
     "/images/서핑/surf1.jpeg",
@@ -29,7 +39,6 @@ export const galleries = {
     "/images/워터파크/waterpark5.jpeg",
     "/images/워터파크/waterpark6.jpeg",
     "/images/워터파크/waterpark7.jpeg",
-    "/images/워터파크/waterpark8.jpeg",
   ],
   cafe: [
     "/images/배카페/cafe1.jpeg",
@@ -41,6 +50,7 @@ export const galleries = {
     "/images/배카페/cafe7.jpeg",
     "/images/배카페/cafe8.jpeg",
   ],
+  bbq: bbqPhotos,
   rooftop: [
     "/images/루프탑/rooftop1.jpeg",
     "/images/루프탑/rooftop2.jpeg",
@@ -100,13 +110,16 @@ export const galleries = {
     "/images/info/23.png",
     "/images/info/24.png",
     "/images/info/25.png",
+    "/images/info/26.png",
+    "/images/info/27.png",
   ],
   activityDetails: {
+    rides: Array.from({ length: 15 }, (_, i) => `/images/놀이기구/상세/${i + 1}.jpeg`),
     ski: Array.from({ length: 15 }, (_, i) => `/images/스키보드/상세/${i + 1}.jpeg`),
     wakesurf: Array.from({ length: 19 }, (_, i) => `/images/서핑/상세/${i + 1}.jpeg`),
     waterpark: Array.from({ length: 16 }, (_, i) => `/images/워터파크/상세/${i + 1}.jpeg`),
-    bbq: Array.from({ length: 12 }, (_, i) => `/images/일상/${i + 1}.jpeg`),
-    cafe: Array.from({ length: 9 }, (_, i) => `/images/배카페/상세/${i + 1}.jpeg`),
+    bbq: bbqPhotos,
+    cafe: Array.from({ length: 10 }, (_, i) => `/images/배카페/상세/${i + 1}.jpeg`),
     rooftop: Array.from({ length: 22 }, (_, i) => `/images/루프탑/상세/${i + 1}.jpeg`),
     stay4: ["/images/숙소/상세/4인실.jpeg"],
     stay5: ["/images/숙소/상세/5인실.jpeg"],

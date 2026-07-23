@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import type { Dictionary } from "@/i18n";
+import { CopyableAccount } from "./CopyableAccount";
 
 type SeasonKey = "peak" | "off";
-type GroupSizeKey = "4" | "2-3";
+type GroupSizeKey = "4" | "3" | "2";
 
 export function Pricing({ dict }: { dict: Dictionary }) {
   const [season, setSeason] = useState<SeasonKey>("peak");
@@ -158,11 +159,15 @@ export function Pricing({ dict }: { dict: Dictionary }) {
               </span>
             ))}
           </div>
-          <p className="text-black/70" style={{ fontSize: "13px", lineHeight: 1.7 }}>
+          <div className="flex items-center gap-2 flex-wrap" style={{ fontSize: "13px", lineHeight: 1.7 }}>
             <strong className="text-black">{dict.pricing.common.transferPrefix}</strong>
-            {" · "}
-            {dict.brand.bank.label} {dict.brand.bank.account} ({dict.pricing.common.holderPrefix} {dict.brand.bank.holder})
-          </p>
+            <CopyableAccount
+              bankLabel={dict.brand.bank.label}
+              account={dict.brand.bank.account}
+              holderPrefix={dict.pricing.common.holderPrefix}
+              holder={dict.brand.bank.holder}
+            />
+          </div>
         </div>
 
         <div id="packages" className="scroll-mt-20">
@@ -330,12 +335,10 @@ export function Pricing({ dict }: { dict: Dictionary }) {
               <span style={{ color: "#00C2D1", flexShrink: 0 }}>•</span>
               {packages.notes.bbqPrefix}: {packages.bbqComposition}
             </li>
-            {groupSize === "4" && (
-              <li className="flex items-start gap-2">
-                <span style={{ color: "#e11d48", flexShrink: 0 }}>•</span>
-                {packages.notes.under4}
-              </li>
-            )}
+            <li className="flex items-start gap-2">
+              <span style={{ color: "#e11d48", flexShrink: 0 }}>•</span>
+              {packages.notes.under4}
+            </li>
           </ul>
         </div>
 

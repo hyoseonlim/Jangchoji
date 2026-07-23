@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PlayIcon, InstagramIcon } from "lucide-react";
-import type { Dictionary } from "@/i18n";
-import { NaverReserveButton } from "./NaverReserveButton";
+import type { Dictionary, Locale } from "@/i18n";
+import { ReserveButton } from "./ReserveButton";
 
 const skiImage = "/images/ski.png";
 const boardImage = "/images/board.png";
@@ -55,7 +55,7 @@ function CategoryRow({ label, items }: { label: string; items: readonly ChipItem
   );
 }
 
-export function Hero({ dict }: { dict: Dictionary }) {
+export function Hero({ dict, locale }: { dict: Dictionary; locale: Locale }) {
   const [settled, setSettled] = useState(false);
   const reducedMotionRef = useRef(false);
 
@@ -230,16 +230,17 @@ export function Hero({ dict }: { dict: Dictionary }) {
           </a>
         </div>
 
-        <div className="mt-4 flex flex-col sm:flex-row gap-3 items-center justify-center">
-          <NaverReserveButton
+        <div className="mt-4 flex flex-col sm:flex-row gap-2 items-center justify-center">
+          <ReserveButton
             label={dict.hero.ctaPrimary}
-            size="lg"
+            size="md"
+            locale={locale}
             className="hidden md:inline-flex transition-transform hover:scale-[1.02] active:scale-[0.98]"
           />
           <a
             href="#activities"
-            className="inline-flex items-center gap-1.5 px-5 py-2 text-black border border-black/25 hover:border-black/50 transition-colors"
-            style={{ fontSize: "13px", fontWeight: 500, borderRadius: "3px" }}
+            className="inline-flex items-center justify-center px-5 py-2.5 text-black border border-black/25 hover:border-black/50 transition-colors"
+            style={{ fontSize: "14px", fontWeight: 700, borderRadius: "2px", letterSpacing: "-0.01em" }}
           >
             {dict.hero.ctaSecondary}
           </a>
