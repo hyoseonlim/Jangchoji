@@ -52,7 +52,12 @@ export function ReservationEditor({
   packagePrices: PackagePriceRow[];
   initial: AdminReservationRow | null;
   onClose: () => void;
-  onSaved: () => void | Promise<void>;
+  onSaved: (result: {
+    id: number;
+    status: "pending" | "confirmed";
+    checkIn: string;
+    checkOut: string;
+  }) => void | Promise<void>;
 }) {
   const isEdit = mode === "edit" && initial != null;
 
@@ -303,7 +308,13 @@ export function ReservationEditor({
         setSubmitError(json.error ?? "저장 실패");
         return;
       }
-      await onSaved();
+      const savedId: number = isEdit ? initial!.id : Number(json.id);
+      await onSaved({
+        id: savedId,
+        status,
+        checkIn,
+        checkOut,
+      });
       onClose();
     } catch {
       setSubmitError("네트워크 오류");

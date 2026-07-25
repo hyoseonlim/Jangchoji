@@ -301,7 +301,12 @@ export function AdminDashboard({
     setEditorMode(null);
     setEditorTarget(null);
   }
-  async function handleEditorSaved() {
+  async function handleEditorSaved(result: {
+    id: number;
+    status: "pending" | "confirmed";
+    checkIn: string;
+    checkOut: string;
+  }) {
     // 편집 시 이력 캐시 무효화
     if (editorTarget) {
       setHistoryByRow((prev) => {
@@ -312,6 +317,17 @@ export function AdminDashboard({
       if (expandedIds.has(editorTarget.id)) void fetchHistory(editorTarget.id);
     }
     await refresh();
+    // 저장한 예약이 현재 필터에서 숨겨지지 않도록 자동 조정
+    if (statusFilter !== "all" && statusFilter !== result.status) {
+      setStatusFilter(result.status);
+    }
+    if (dateScope === "upcoming" && result.checkOut < today) {
+      setDateScope("all");
+    } else if (dateScope === "past" && result.checkIn >= today) {
+      setDateScope("all");
+    }
+    // 방금 저장한 예약은 자동 확장해서 바로 확인 가능하도록
+    setExpandedIds((prev) => new Set([...prev, result.id]));
   }
 
   const tableProps: TableProps = {
