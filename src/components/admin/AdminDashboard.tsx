@@ -7,8 +7,10 @@ import type {
   ReservationHistoryEntry,
   ReservationStatus,
 } from "@/lib/reservations";
+import type { PackagePriceRow } from "@/lib/pricing";
 import { ROOMS, ROOM_KEYS, type RoomKey } from "@/lib/rooms";
 import { AdminModal, type AdminModalRequest } from "./AdminModal";
+import { ReservationEditor } from "./ReservationEditor";
 
 const numberFmt = new Intl.NumberFormat("ko-KR");
 const won = (n: number) => `₩${numberFmt.format(n)}`;
@@ -43,7 +45,7 @@ const STATUS_ORDER: Record<ReservationStatus, number> = {
 
 type StatusFilter = "all" | ReservationStatus;
 type DateScope = "upcoming" | "all" | "past";
-type ViewMode = "list" | "date" | "room";
+type ViewMode = "list" | "date";
 
 type HistoryState =
   | { status: "idle" }
@@ -94,10 +96,12 @@ function sortReservations(list: AdminReservationRow[]): AdminReservationRow[] {
 export function AdminDashboard({
   admin,
   initialRows,
+  packagePrices,
   locale,
 }: {
   admin: { username: string; displayName: string; role: "admin" | "viewer" };
   initialRows: AdminReservationRow[];
+  packagePrices: PackagePriceRow[];
   locale: string;
 }) {
   const router = useRouter();
@@ -110,6 +114,17 @@ export function AdminDashboard({
   const [busyId, setBusyId] = useState<number | null>(null);
   const [historyByRow, setHistoryByRow] = useState<Record<number, HistoryState>>({});
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  function toggleDateExpanded(date: string) {
+    setExpandedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  }
+  const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
+  const [editorTarget, setEditorTarget] = useState<AdminReservationRow | null>(null);
   const [modal, setModal] = useState<AdminModalRequest | null>(null);
   const modalResolveRef = useRef<((ok: boolean) => void) | null>(null);
   const [, startTransition] = useTransition();
@@ -128,13 +143,26 @@ export function AdminDashboard({
     let todayCheckIn = 0;
     let weekCheckIn = 0;
     let monthRevenue = 0;
+    let monthOnline = 0;
+    let monthManual = 0;
     for (const r of rows) {
       if (r.status === "cancelled") continue;
       if (r.check_in === today) todayCheckIn += 1;
       if (r.check_in >= today && r.check_in < weekEnd) weekCheckIn += 1;
+      if (r.check_in >= monthStart) {
+        if (r.source === "online") monthOnline += 1;
+        else monthManual += 1;
+      }
       if (r.status === "confirmed" && r.check_in >= monthStart) monthRevenue += r.total_price;
     }
-    return { pending: counts.pending, todayCheckIn, weekCheckIn, monthRevenue };
+    return {
+      pending: counts.pending,
+      todayCheckIn,
+      weekCheckIn,
+      monthRevenue,
+      monthOnline,
+      monthManual,
+    };
   }, [rows, counts.pending, today, weekEnd, monthStart]);
 
   const filtered = useMemo(() => {
@@ -146,35 +174,6 @@ export function AdminDashboard({
     });
     return sortReservations(list);
   }, [rows, statusFilter, dateScope, today]);
-
-  const byDate = useMemo(() => {
-    const map = new Map<string, AdminReservationRow[]>();
-    for (const r of filtered) {
-      const list = map.get(r.check_in) ?? [];
-      list.push(r);
-      map.set(r.check_in, list);
-    }
-    return [...map.entries()]
-      .map(([d, list]) => [d, sortReservations(list)] as const)
-      .sort(([a], [b]) => a.localeCompare(b));
-  }, [filtered]);
-
-  const byRoom = useMemo(() => {
-    const map: Record<RoomKey | "none", AdminReservationRow[]> = {
-      room_4: [],
-      room_5: [],
-      room_6: [],
-      room_8: [],
-      none: [],
-    };
-    for (const r of filtered) {
-      if (r.room_key) map[r.room_key].push(r);
-      else map.none.push(r);
-    }
-    for (const key of ROOM_KEYS) map[key] = sortReservations(map[key]);
-    map.none = sortReservations(map.none);
-    return map;
-  }, [filtered]);
 
   function openModal(request: AdminModalRequest): Promise<boolean> {
     return new Promise((resolve) => {
@@ -290,6 +289,31 @@ export function AdminDashboard({
     });
   }
 
+  function openCreate() {
+    setEditorTarget(null);
+    setEditorMode("create");
+  }
+  function openEdit(row: AdminReservationRow) {
+    setEditorTarget(row);
+    setEditorMode("edit");
+  }
+  function closeEditor() {
+    setEditorMode(null);
+    setEditorTarget(null);
+  }
+  async function handleEditorSaved() {
+    // 편집 시 이력 캐시 무효화
+    if (editorTarget) {
+      setHistoryByRow((prev) => {
+        const next = { ...prev };
+        delete next[editorTarget.id];
+        return next;
+      });
+      if (expandedIds.has(editorTarget.id)) void fetchHistory(editorTarget.id);
+    }
+    await refresh();
+  }
+
   const tableProps: TableProps = {
     canWrite,
     busyId,
@@ -297,6 +321,7 @@ export function AdminDashboard({
     onToggle: toggleExpand,
     onConfirm: askConfirm,
     onCancel: askCancel,
+    onEdit: openEdit,
     historyByRow,
     today,
   };
@@ -349,7 +374,7 @@ export function AdminDashboard({
       </header>
 
       {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-4 md:mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-2 md:mb-3">
         <KpiCard
           label="확정 대기"
           value={kpi.pending}
@@ -360,6 +385,25 @@ export function AdminDashboard({
         <KpiCard label="오늘 체크인" value={kpi.todayCheckIn} unit="건" accent="#00d5e6" />
         <KpiCard label="이번 주 체크인" value={kpi.weekCheckIn} unit="건" accent="#a1a1aa" />
         <KpiCard label="이번 달 확정 매출" value={`₩${wonShort(kpi.monthRevenue)}`} accent="#00d5e6" />
+      </div>
+
+      {/* Source stats (이번 달 접수 · 출처별) */}
+      <div
+        className="mb-4 md:mb-6 flex items-center gap-3 flex-wrap p-2.5 md:p-3"
+        style={{
+          backgroundColor: "#14171c",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "4px",
+        }}
+      >
+        <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>
+          이번 달 출처
+        </span>
+        <SourcePill label="온라인" value={kpi.monthOnline} accent="#00d5e6" />
+        <SourcePill label="수기" value={kpi.monthManual} accent="#a78bfa" />
+        <span style={{ marginLeft: "auto", fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+          취소 제외 · 체크인 기준
+        </span>
       </div>
 
       {/* Toolbar */}
@@ -385,7 +429,6 @@ export function AdminDashboard({
               [
                 ["list", "목록"],
                 ["date", "일자별"],
-                ["room", "호실별"],
               ] as const
             ).map(([key, label]) => {
               const active = view === key;
@@ -413,21 +456,41 @@ export function AdminDashboard({
             })}
           </div>
 
-          <button
-            type="button"
-            onClick={refresh}
-            style={{
-              padding: "6px 12px",
-              border: "1px solid rgba(255,255,255,0.15)",
-              borderRadius: "2px",
-              backgroundColor: "transparent",
-              color: "rgba(255,255,255,0.75)",
-              fontSize: "12px",
-              cursor: "pointer",
-            }}
-          >
-            ↻ 새로고침
-          </button>
+          <div className="flex items-center gap-2">
+            {canWrite && (
+              <button
+                type="button"
+                onClick={openCreate}
+                style={{
+                  padding: "6px 12px",
+                  border: "1px solid #00C2D1",
+                  borderRadius: "2px",
+                  backgroundColor: "#00C2D1",
+                  color: "#001518",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                + 수기 등록
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={refresh}
+              style={{
+                padding: "6px 12px",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: "2px",
+                backgroundColor: "transparent",
+                color: "rgba(255,255,255,0.75)",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              ↻ 새로고침
+            </button>
+          </div>
         </div>
 
         <div
@@ -453,73 +516,14 @@ export function AdminDashboard({
         <EmptyState />
       ) : view === "list" ? (
         <ReservationTable rows={filtered} {...tableProps} />
-      ) : view === "date" ? (
-        <div className="space-y-5">
-          {byDate.map(([date, list]) => {
-            const totalGuests = list.reduce((s, r) => s + r.guests_count, 0);
-            return (
-              <section key={date}>
-                <SectionHeader
-                  left={formatFullDateKo(date)}
-                  right={`${list.length}건 · ${totalGuests}명`}
-                  isToday={date === today}
-                />
-                <div className="mt-2">
-                  <ReservationTable rows={list} {...tableProps} />
-                </div>
-              </section>
-            );
-          })}
-        </div>
       ) : (
-        <div className="space-y-4">
-          {ROOM_KEYS.map((rk) => {
-            const list = byRoom[rk];
-            const room = ROOMS[rk];
-            return (
-              <section key={rk}>
-                <SectionHeader
-                  left={room.title}
-                  right={`${list.length}건${list.length ? ` · ${
-                    room.minGuests === room.maxGuests
-                      ? `${room.minGuests}인`
-                      : `${room.minGuests}~${room.maxGuests}인`
-                  }${room.hasLoft ? " · 다락방" : ""}` : ""}`}
-                />
-                <div className="mt-2">
-                  {list.length === 0 ? (
-                    <p
-                      className="px-3 py-4"
-                      style={{
-                        backgroundColor: "#14171c",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: "3px",
-                        fontSize: "12px",
-                        color: "rgba(255,255,255,0.4)",
-                      }}
-                    >
-                      예약 없음
-                    </p>
-                  ) : (
-                    <ReservationTable rows={list} {...tableProps} />
-                  )}
-                </div>
-              </section>
-            );
-          })}
-          {byRoom.none.length > 0 && (
-            <section>
-              <SectionHeader
-                left="객실 미지정"
-                right={`${byRoom.none.length}건`}
-                warning
-              />
-              <div className="mt-2">
-                <ReservationTable rows={byRoom.none} {...tableProps} />
-              </div>
-            </section>
-          )}
-        </div>
+        <ByDateGridView
+          filtered={filtered}
+          today={today}
+          expandedDates={expandedDates}
+          onToggleDate={toggleDateExpanded}
+          tableProps={tableProps}
+        />
       )}
 
       <AdminModal
@@ -527,6 +531,223 @@ export function AdminDashboard({
         onConfirm={() => resolveModal(true)}
         onCancel={() => resolveModal(false)}
       />
+
+      <ReservationEditor
+        open={editorMode !== null}
+        mode={editorMode ?? "create"}
+        packagePrices={packagePrices}
+        initial={editorTarget}
+        onClose={closeEditor}
+        onSaved={handleEditorSaved}
+      />
+    </div>
+  );
+}
+
+// ---------- By-date grid view ----------
+
+type ByDateEntry = readonly [string, AdminReservationRow[]];
+
+function ByDateGridView({
+  filtered,
+  today,
+  expandedDates,
+  onToggleDate,
+  tableProps,
+}: {
+  filtered: AdminReservationRow[];
+  today: string;
+  expandedDates: Set<string>;
+  onToggleDate: (date: string) => void;
+  tableProps: TableProps;
+}) {
+  // 일자별 점유 그룹핑
+  const entries: ByDateEntry[] = useMemo(() => {
+    const map = new Map<string, AdminReservationRow[]>();
+    for (const r of filtered) {
+      if (r.status === "cancelled") continue;
+      const start = new Date(r.check_in);
+      const end = new Date(r.check_out);
+      const cursor = new Date(start);
+      while (cursor < end) {
+        const iso = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
+        const list = map.get(iso) ?? [];
+        list.push(r);
+        map.set(iso, list);
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [filtered]);
+
+  if (entries.length === 0) return <EmptyState />;
+
+  return (
+    <div className="space-y-2">
+      {entries.map(([date, list]) => {
+        const isToday = date === today;
+        const isExpanded = expandedDates.has(date);
+        const totalGuests = list.reduce((s, r) => s + r.guests_count, 0);
+
+        // 각 물리 객실별로 그 날짜에 점유된 예약 찾기
+        const cellByRoom = new Map<RoomKey, AdminReservationRow>();
+        for (const r of list) {
+          if (r.room_key) cellByRoom.set(r.room_key, r);
+        }
+        const occupiedCount = cellByRoom.size;
+        const noRoomCount = list.length - occupiedCount;
+
+        return (
+          <section
+            key={date}
+            style={{
+              backgroundColor: "#14171c",
+              border: `1px solid ${isToday ? "rgba(0,213,230,0.35)" : "rgba(255,255,255,0.08)"}`,
+              borderRadius: "4px",
+              overflow: "hidden",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => onToggleDate(date)}
+              className="w-full text-left"
+              style={{
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: "inherit",
+              }}
+            >
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h3
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: 800,
+                      color: isToday ? "#00d5e6" : "#fff",
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    {formatFullDateKo(date)}
+                    {isToday && (
+                      <span
+                        style={{
+                          marginLeft: "6px",
+                          fontSize: "10px",
+                          padding: "1px 6px",
+                          backgroundColor: "rgba(0,194,209,0.15)",
+                          borderRadius: "2px",
+                          fontWeight: 800,
+                        }}
+                      >
+                        오늘
+                      </span>
+                    )}
+                  </h3>
+                  <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", marginTop: "2px" }}>
+                    {occupiedCount}/{ROOM_KEYS.length} 객실 점유 · {totalGuests}명
+                    {noRoomCount > 0 && (
+                      <span style={{ color: "#ffc107", marginLeft: "6px" }}>
+                        · 객실 미지정 {noRoomCount}건
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    fontSize: "10px",
+                    color: "rgba(255,255,255,0.4)",
+                    transition: "transform 150ms",
+                    transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                  }}
+                >
+                  ▾
+                </span>
+              </div>
+
+              {/* 7-cell grid */}
+              <div
+                className="mt-2 grid gap-1"
+                style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+              >
+                {ROOM_KEYS.map((rk) => {
+                  const room = ROOMS[rk];
+                  const occupied = cellByRoom.get(rk);
+                  return (
+                    <RoomCell key={rk} label={room.title} reservation={occupied ?? null} />
+                  );
+                })}
+              </div>
+            </button>
+
+            {isExpanded && (
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", padding: "10px 12px" }}>
+                <ReservationTable rows={list} {...tableProps} />
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function RoomCell({
+  label,
+  reservation,
+}: {
+  label: string;
+  reservation: AdminReservationRow | null;
+}) {
+  const occupied = reservation != null;
+  const c = reservation ? STATUS_COLOR[reservation.status] : null;
+  return (
+    <div
+      style={{
+        padding: "6px 4px",
+        border: occupied
+          ? `1px solid ${c?.border ?? "rgba(255,255,255,0.15)"}`
+          : "1px dashed rgba(255,255,255,0.1)",
+        borderRadius: "2px",
+        backgroundColor: occupied ? (c?.bg ?? "transparent") : "transparent",
+        textAlign: "center",
+        minHeight: "42px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+        gap: "1px",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "10px",
+          fontWeight: 700,
+          color: occupied ? c?.fg : "rgba(255,255,255,0.35)",
+          letterSpacing: "-0.01em",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </div>
+      {occupied && reservation?.representative && (
+        <div
+          style={{
+            fontSize: "10px",
+            color: c?.fg,
+            fontWeight: 800,
+            maxWidth: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={reservation.representative.name}
+        >
+          {reservation.representative.name}
+        </div>
+      )}
     </div>
   );
 }
@@ -540,6 +761,7 @@ type TableProps = {
   onToggle: (id: number) => void;
   onConfirm: (r: AdminReservationRow) => void;
   onCancel: (r: AdminReservationRow) => void;
+  onEdit: (r: AdminReservationRow) => void;
   historyByRow: Record<number, HistoryState>;
   today: string;
 };
@@ -623,6 +845,7 @@ function ReservationTableRow({
   onToggle,
   onConfirm,
   onCancel,
+  onEdit,
   historyByRow,
   today,
 }: TableProps & { row: AdminReservationRow; zebra: boolean }) {
@@ -671,6 +894,19 @@ function ReservationTableRow({
           >
             {STATUS_LABEL[row.status]}
           </span>
+          {row.source === "manual" && (
+            <div
+              style={{
+                marginTop: "3px",
+                fontSize: "9px",
+                fontWeight: 800,
+                color: "rgba(255,255,255,0.55)",
+                letterSpacing: "0.05em",
+              }}
+            >
+              수기
+            </div>
+          )}
         </td>
         <td style={tdStyle}>
           <div style={{ fontWeight: 700 }}>
@@ -746,6 +982,7 @@ function ReservationTableRow({
               busy={busy}
               onConfirm={onConfirm}
               onCancel={onCancel}
+              onEdit={onEdit}
               historyState={historyByRow[row.id] ?? { status: "loading" }}
             />
           </td>
@@ -761,6 +998,7 @@ function ExpandedDetail({
   busy,
   onConfirm,
   onCancel,
+  onEdit,
   historyState,
 }: {
   row: AdminReservationRow;
@@ -768,6 +1006,7 @@ function ExpandedDetail({
   busy: boolean;
   onConfirm: (r: AdminReservationRow) => void;
   onCancel: (r: AdminReservationRow) => void;
+  onEdit: (r: AdminReservationRow) => void;
   historyState: HistoryState;
 }) {
   return (
@@ -798,6 +1037,20 @@ function ExpandedDetail({
         <MiniField label="접수일시">
           {new Date(row.created_at).toLocaleString("ko-KR")}
         </MiniField>
+        <MiniField label="출처">
+          {row.source === "manual" ? (
+            <>
+              수기 등록
+              {row.created_by_admin && (
+                <span style={{ marginLeft: "6px", color: "rgba(255,255,255,0.55)", fontSize: "11px" }}>
+                  · {row.created_by_admin}
+                </span>
+              )}
+            </>
+          ) : (
+            <span>온라인</span>
+          )}
+        </MiniField>
         <MiniField label="입금자명">
           {row.depositor_name ? (
             <>
@@ -815,6 +1068,23 @@ function ExpandedDetail({
         <MiniField label="계절">
           {row.season === "peak" ? "성수기" : row.season === "off" ? "비수기" : "혼합"}
         </MiniField>
+        {row.price_override != null && (
+          <MiniField label="가격 오버라이드" span2>
+            <span style={{ color: "#ffc107", fontWeight: 700 }}>
+              적용됨 · {row.price_note ?? "사유 없음"}
+            </span>
+          </MiniField>
+        )}
+        {row.last_edited_at && (
+          <MiniField label="최종 편집" span2>
+            {new Date(row.last_edited_at).toLocaleString("ko-KR")}
+            {row.last_edited_by && (
+              <span style={{ marginLeft: "6px", color: "rgba(255,255,255,0.55)" }}>
+                · {row.last_edited_by}
+              </span>
+            )}
+          </MiniField>
+        )}
         {row.guest_names.length > 1 && (
           <MiniField label="동행" span2>
             {row.guest_names.slice(1).join(", ")}
@@ -840,6 +1110,14 @@ function ExpandedDetail({
           <button
             type="button"
             disabled={busy}
+            onClick={() => onEdit(row)}
+            style={secondaryBtn(busy)}
+          >
+            편집
+          </button>
+          <button
+            type="button"
+            disabled={busy}
             onClick={() => onCancel(row)}
             style={dangerBtn(busy)}
           >
@@ -848,7 +1126,15 @@ function ExpandedDetail({
         </div>
       )}
       {canWrite && row.status === "confirmed" && (
-        <div className="mb-3">
+        <div className="mb-3 flex gap-2 flex-wrap">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onEdit(row)}
+            style={secondaryBtn(busy)}
+          >
+            편집
+          </button>
           <button
             type="button"
             disabled={busy}
@@ -891,6 +1177,19 @@ function dangerBtn(busy: boolean): React.CSSProperties {
     fontWeight: 700,
     borderRadius: "2px",
     border: "1px solid rgba(255,107,122,0.4)",
+    cursor: busy ? "wait" : "pointer",
+    opacity: busy ? 0.5 : 1,
+  };
+}
+function secondaryBtn(busy: boolean): React.CSSProperties {
+  return {
+    padding: "7px 14px",
+    backgroundColor: "transparent",
+    color: "rgba(255,255,255,0.85)",
+    fontSize: "13px",
+    fontWeight: 700,
+    borderRadius: "2px",
+    border: "1px solid rgba(255,255,255,0.2)",
     cursor: busy ? "wait" : "pointer",
     opacity: busy ? 0.5 : 1,
   };
@@ -994,6 +1293,36 @@ function KpiCard({
         )}
       </p>
     </div>
+  );
+}
+
+function SourcePill({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent: string;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "baseline",
+        gap: "6px",
+        padding: "4px 10px",
+        backgroundColor: "rgba(255,255,255,0.03)",
+        border: `1px solid ${accent}55`,
+        borderRadius: "999px",
+        fontSize: "12px",
+      }}
+    >
+      <span style={{ color: accent, fontWeight: 700 }}>●</span>
+      <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600 }}>{label}</span>
+      <span style={{ color: "#fff", fontWeight: 800 }}>{value}</span>
+      <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "11px" }}>건</span>
+    </span>
   );
 }
 
@@ -1143,9 +1472,61 @@ const STATUS_LABEL_HISTORY: Record<ReservationStatus, string> = {
 };
 
 function actionLabel(entry: ReservationHistoryEntry): string {
-  if (entry.action === "created") return "예약 접수";
+  if (entry.action === "created") return "예약 접수 (온라인)";
+  if (entry.action === "admin_created") return "수기 등록";
+  if (entry.action === "edited") return "예약 편집";
   if (entry.after_status) return STATUS_LABEL_HISTORY[entry.after_status];
   return entry.action;
+}
+
+function actionColor(action: string): string {
+  if (action === "created") return "#a1a1aa";
+  if (action === "admin_created") return "#a78bfa";
+  if (action === "edited") return "#fbbf24";
+  if (action === "confirmed") return "#00d5e6";
+  if (action === "cancelled") return "#ff6b7a";
+  return "#00d5e6";
+}
+
+// 필드명을 한국어 라벨로 매핑
+const FIELD_LABELS: Record<string, string> = {
+  checkIn: "체크인",
+  checkOut: "체크아웃",
+  roomKey: "객실",
+  guestsCount: "인원",
+  status: "상태",
+  memo: "요청사항",
+  season: "계절",
+  packageLabel: "패키지",
+  totalPrice: "총액",
+  priceOverride: "가격 오버라이드",
+  priceNote: "오버라이드 사유",
+  guests: "예약자",
+  depositorName: "입금자명",
+};
+
+const ROOM_LABELS_HISTORY: Record<string, string> = {
+  room_4: "4인실",
+  room_5: "5인실",
+  room_6: "6인실",
+  room_8: "8인실",
+};
+
+function formatFieldValue(field: string, value: unknown): string {
+  if (value == null || value === "") return "(비어있음)";
+  if (field === "totalPrice" || field === "priceOverride") {
+    if (typeof value === "number") return `₩${numberFmt.format(value)}`;
+  }
+  if (field === "roomKey" && typeof value === "string") {
+    return ROOM_LABELS_HISTORY[value] ?? value;
+  }
+  if (field === "status" && typeof value === "string") {
+    return STATUS_LABEL_HISTORY[value as ReservationStatus] ?? value;
+  }
+  if (field === "season" && typeof value === "string") {
+    return value === "peak" ? "성수기" : value === "off" ? "비수기" : "혼합";
+  }
+  return String(value);
 }
 
 function HistoryTimeline({ state }: { state: HistoryState }) {
@@ -1171,7 +1552,7 @@ function HistoryTimeline({ state }: { state: HistoryState }) {
     );
   }
   return (
-    <ol className="mt-1.5 space-y-1.5" style={{ listStyle: "none", padding: 0 }}>
+    <ol className="mt-1.5 space-y-2" style={{ listStyle: "none", padding: 0 }}>
       {state.entries.map((e) => {
         const who =
           e.admin_display_name && e.admin_username
@@ -1186,7 +1567,7 @@ function HistoryTimeline({ state }: { state: HistoryState }) {
                 height: "6px",
                 marginTop: "6px",
                 borderRadius: "50%",
-                backgroundColor: e.action === "created" ? "#a1a1aa" : "#00d5e6",
+                backgroundColor: actionColor(e.action),
                 flexShrink: 0,
               }}
             />
@@ -1196,7 +1577,7 @@ function HistoryTimeline({ state }: { state: HistoryState }) {
                 style={{ color: "rgba(255,255,255,0.9)" }}
               >
                 <span style={{ fontWeight: 700 }}>{actionLabel(e)}</span>
-                {e.before_status && e.after_status && (
+                {e.before_status && e.after_status && e.action !== "edited" && (
                   <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "11px" }}>
                     {STATUS_LABEL_HISTORY[e.before_status]} → {STATUS_LABEL_HISTORY[e.after_status]}
                   </span>
@@ -1210,6 +1591,33 @@ function HistoryTimeline({ state }: { state: HistoryState }) {
                 <span>·</span>
                 <span>{new Date(e.created_at).toLocaleString("ko-KR")}</span>
               </div>
+              {e.changes && e.changes.length > 0 && (
+                <ul
+                  className="mt-1.5 space-y-0.5"
+                  style={{
+                    fontSize: "11px",
+                    color: "rgba(255,255,255,0.75)",
+                    listStyle: "none",
+                    padding: 0,
+                    paddingLeft: "0",
+                  }}
+                >
+                  {e.changes.map((c, idx) => (
+                    <li key={idx} style={{ lineHeight: 1.5 }}>
+                      <span style={{ color: "rgba(255,255,255,0.55)", marginRight: "4px" }}>
+                        {FIELD_LABELS[c.field] ?? c.field}:
+                      </span>
+                      <span style={{ color: "rgba(255,107,122,0.85)" }}>
+                        {formatFieldValue(c.field, c.before)}
+                      </span>
+                      <span style={{ color: "rgba(255,255,255,0.4)", margin: "0 4px" }}>→</span>
+                      <span style={{ color: "#00d5e6", fontWeight: 600 }}>
+                        {formatFieldValue(c.field, c.after)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </li>
         );

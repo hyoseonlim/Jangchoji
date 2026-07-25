@@ -7,6 +7,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -67,15 +68,47 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
           />
         </label>
         <label className="block mt-4">
-          <span style={labelStyle}>비밀번호</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+            <span style={{ ...labelStyle, marginBottom: 0 }}>비밀번호</span>
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "rgba(255,255,255,0.55)",
+                fontSize: "11px",
+                fontWeight: 700,
+                cursor: "pointer",
+                padding: "2px 4px",
+              }}
+              aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보이기"}
+            >
+              {showPassword ? "숨기기" : "보이기"}
+            </button>
+          </div>
           <input
-            type="password"
+            type={showPassword ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            lang="ko"
             required
             style={inputStyle}
           />
+          <p
+            style={{
+              marginTop: "6px",
+              fontSize: "11px",
+              color: "rgba(255,255,255,0.45)",
+              lineHeight: 1.5,
+            }}
+          >
+            한글 · 특수문자 포함 시 <strong style={{ color: "rgba(255,255,255,0.75)" }}>보이기</strong>로 전환 후 입력하세요 (모바일 IME 대응).
+          </p>
         </label>
 
         {error && (

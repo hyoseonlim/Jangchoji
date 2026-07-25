@@ -4,6 +4,34 @@ export const PEAK_RANGES: ReadonlyArray<{ start: string; end: string }> = [
   { start: "2026-07-17", end: "2026-08-17" },
 ];
 
+// 한국 공휴일 (대체공휴일 포함). 공휴일은 요금 계산 시 '토요일' 요금이 적용됩니다.
+// 매년 연말/연초에 다음 해 공휴일을 추가해주세요.
+// npm 라이브러리 date-holidays 로 대체 가능하지만, 소규모 운영이라 하드코딩 유지.
+export const HOLIDAYS: Record<string, string> = {
+  // 2026
+  "2026-01-01": "신정",
+  "2026-02-16": "설날 연휴",
+  "2026-02-17": "설날",
+  "2026-02-18": "설날 연휴",
+  "2026-03-01": "삼일절",
+  "2026-03-02": "삼일절 대체공휴일",
+  "2026-05-05": "어린이날",
+  "2026-05-24": "부처님오신날",
+  "2026-05-25": "부처님오신날 대체공휴일",
+  "2026-06-06": "현충일",
+  "2026-08-15": "광복절",
+  "2026-08-17": "광복절 대체공휴일",
+  "2026-09-24": "추석 연휴",
+  "2026-09-25": "추석",
+  "2026-09-26": "추석 연휴",
+  "2026-10-03": "개천절",
+  "2026-10-05": "개천절 대체공휴일",
+  "2026-10-09": "한글날",
+  "2026-12-25": "성탄절",
+  // 2027 (샘플, 실제 공휴일 확정 후 갱신 필요)
+  "2027-01-01": "신정",
+};
+
 export type Season = "peak" | "off";
 export type GroupSize = "4" | "3" | "2";
 export type DayType = "weekday" | "saturday";
@@ -13,7 +41,17 @@ export function seasonForDate(date: Date): Season {
   return PEAK_RANGES.some((r) => iso >= r.start && iso <= r.end) ? "peak" : "off";
 }
 
+export function isHoliday(date: Date): boolean {
+  return toISODate(date) in HOLIDAYS;
+}
+
+export function holidayName(date: Date): string | null {
+  return HOLIDAYS[toISODate(date)] ?? null;
+}
+
+// 요금 판정용 day_type. 토요일 또는 공휴일이면 saturday 요금 적용.
 export function dayTypeForDate(date: Date): DayType {
+  if (isHoliday(date)) return "saturday";
   return date.getDay() === 6 ? "saturday" : "weekday";
 }
 
@@ -57,6 +95,7 @@ export const CONFIG_KEYS = [
   "morning",
   "afternoon",
   "allday",
+  "stay_bbq",
   "rides3_bbq",
   "rides5_bbq",
   "morning_bbq",
@@ -71,6 +110,7 @@ export const CONFIG_LABELS: Record<ConfigKey, string> = {
   morning: "숙박 + 놀이기구 오전무제한",
   afternoon: "숙박 + 놀이기구 오후무제한",
   allday: "숙박 + 놀이기구 종일무제한",
+  stay_bbq: "숙박 + BBQ",
   rides3_bbq: "숙박 + 놀이기구 3종 + BBQ",
   rides5_bbq: "숙박 + 놀이기구 5종 + BBQ",
   morning_bbq: "숙박 + 놀이기구 오전무제한 + BBQ",
@@ -195,4 +235,19 @@ export function summarizeSeasonFromRange(checkIn: string, checkOut: string): Sea
   const nights = nightsBetween(checkIn, checkOut);
   if (nights.length === 0) return null;
   return summarizeSeason(nights);
+}
+
+// 선택 기간 [checkIn, checkOut) 에 포함된 공휴일 목록 (안내용).
+export function holidaysInRange(
+  checkIn: string,
+  checkOut: string,
+): Array<{ date: string; name: string }> {
+  const nights = nightsBetween(checkIn, checkOut);
+  const out: Array<{ date: string; name: string }> = [];
+  for (const n of nights) {
+    const iso = toISODate(n);
+    const name = HOLIDAYS[iso];
+    if (name) out.push({ date: iso, name });
+  }
+  return out;
 }

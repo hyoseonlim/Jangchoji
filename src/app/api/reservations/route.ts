@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createReservation } from "@/lib/reservations";
 import { isConfigKey, type PackageSelections } from "@/lib/pricing";
-import { isRoomKey, ROOMS } from "@/lib/rooms";
+import { isRoomType, ROOM_TYPE_META, ROOMS } from "@/lib/rooms";
 import { notifyAdmin } from "@/lib/telegram";
 
 export const runtime = "nodejs";
@@ -41,16 +41,16 @@ export async function POST(req: Request) {
   }
   const totalQuantity = Object.values(selections).reduce((s, n) => s + (n ?? 0), 0);
 
-  if (!isRoomKey(b.roomKey)) return badRequest("객실을 선택해주세요.");
-  const room = ROOMS[b.roomKey];
+  if (!isRoomType(b.roomType)) return badRequest("객실 유형을 선택해주세요.");
+  const roomType = ROOM_TYPE_META[b.roomType];
   if (
     typeof b.guestsCount !== "number" ||
     !Number.isInteger(b.guestsCount) ||
-    b.guestsCount < room.minGuests ||
-    b.guestsCount > room.maxGuests
+    b.guestsCount < roomType.minGuests ||
+    b.guestsCount > roomType.maxGuests
   ) {
     return badRequest(
-      `${room.title}은 최소 ${room.minGuests}인 / 최대 ${room.maxGuests}인까지 예약 가능합니다.`,
+      `${roomType.title}은 최소 ${roomType.minGuests}인 / 최대 ${roomType.maxGuests}인까지 예약 가능합니다.`,
     );
   }
   if (totalQuantity !== b.guestsCount) {
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
   try {
     const { reservation, quote } = await createReservation({
       packageSelections: selections,
-      roomKey: b.roomKey,
+      roomType: b.roomType,
       guestsCount: b.guestsCount,
       checkIn: b.checkIn,
       checkOut: b.checkOut,
@@ -103,10 +103,13 @@ export async function POST(req: Request) {
 
     const rep = guests.find((g) => g.isRepresentative);
     const priceStr = new Intl.NumberFormat("ko-KR").format(quote.total);
+    const assignedRoomTitle = reservation.room_key
+      ? (ROOMS[reservation.room_key as keyof typeof ROOMS]?.title ?? reservation.room_key)
+      : "미지정";
     await notifyAdmin(
       `<b>새 예약 접수</b>\n` +
         `#${reservation.id} · ${quote.packageLabel}\n` +
-        `객실: ${room.title}\n` +
+        `객실: ${assignedRoomTitle}\n` +
         `일정: ${reservation.check_in} ~ ${reservation.check_out}\n` +
         `인원: ${reservation.guests_count}명\n` +
         `금액: ₩${priceStr}\n` +
