@@ -66,14 +66,14 @@ CREATE TABLE reservations (
   guests_count       INTEGER NOT NULL CHECK (guests_count > 0),
   check_in           DATE NOT NULL,
   check_out          DATE NOT NULL,
-  total_price        INTEGER NOT NULL CHECK (total_price >= 0),
+  total_price        INTEGER NOT NULL, -- 환불·크레딧 등으로 음수도 허용
   status             reservation_status NOT NULL DEFAULT 'pending',
   room_key           TEXT CHECK (room_key IS NULL OR room_key IN (
                        'room_4_a','room_4_b','room_5_a','room_5_b','room_6_a','room_6_b','room_8'
                      )),
   source             TEXT NOT NULL DEFAULT 'online' CHECK (source IN ('online','manual')),
   created_by_admin   TEXT,
-  price_override     INTEGER CHECK (price_override IS NULL OR price_override >= 0),
+  price_override     INTEGER, -- 계산가와 다른 최종가 (할인·환불·조정 등, 음수도 허용)
   price_note         TEXT,
   memo               TEXT,
   depositor_name_enc TEXT,

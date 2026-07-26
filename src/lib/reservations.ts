@@ -308,7 +308,7 @@ export async function adminCreateReservation(
 
   const finalPrice =
     typeof input.priceOverride === "number" && Number.isInteger(input.priceOverride)
-      ? Math.max(0, input.priceOverride)
+      ? input.priceOverride
       : quote.total;
   const priceNote = input.priceOverride != null ? (input.priceNote ?? null) : null;
 
@@ -424,7 +424,7 @@ export async function updateReservation(
 
   const finalPrice =
     typeof input.priceOverride === "number" && Number.isInteger(input.priceOverride)
-      ? Math.max(0, input.priceOverride)
+      ? input.priceOverride
       : quote.total;
   const priceNote = input.priceOverride != null ? (input.priceNote ?? null) : null;
 

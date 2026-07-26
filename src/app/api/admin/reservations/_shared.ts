@@ -83,8 +83,8 @@ export function parseAdminInputBody(body: unknown): ParsedResult {
   let priceOverride: number | undefined;
   let priceNote: string | undefined;
   if (b.priceOverride != null) {
-    if (typeof b.priceOverride !== "number" || !Number.isInteger(b.priceOverride) || b.priceOverride < 0) {
-      return { error: "priceOverride 는 0 이상 정수여야 합니다." };
+    if (typeof b.priceOverride !== "number" || !Number.isInteger(b.priceOverride)) {
+      return { error: "priceOverride 는 정수여야 합니다." };
     }
     priceOverride = b.priceOverride;
     if (typeof b.priceNote !== "string" || b.priceNote.trim().length === 0) {

@@ -224,7 +224,13 @@ export function ReservationEditor({
   const roomAvailable = availability[roomKey];
   const canSubmit = !submitting && checkOut > checkIn && totalQuantity > 0 && representativeName.length > 0;
 
-  const priceOverrideNum = priceOverride ? Number(priceOverride.replace(/[^0-9]/g, "")) : NaN;
+  // 음수 허용 (환불·조정용). "-" 만 남아있으면 아직 미완성 → NaN
+  const priceOverrideNum = (() => {
+    const cleaned = priceOverride.replace(/[^0-9-]/g, "");
+    if (cleaned === "" || cleaned === "-") return NaN;
+    const n = Number(cleaned);
+    return Number.isInteger(n) ? n : NaN;
+  })();
   const finalTotal = priceOverrideOn && Number.isFinite(priceOverrideNum) ? priceOverrideNum : computedTotal;
 
   function updateGuest(idx: number, patch: Partial<Guest>) {
@@ -271,7 +277,7 @@ export function ReservationEditor({
       return;
     }
     if (priceOverrideOn) {
-      if (!Number.isFinite(priceOverrideNum) || priceOverrideNum < 0) {
+      if (!Number.isFinite(priceOverrideNum)) {
         setSubmitError("오버라이드 금액을 입력해주세요.");
         return;
       }
@@ -698,9 +704,17 @@ export function ReservationEditor({
                     <input
                       type="text"
                       inputMode="numeric"
-                      placeholder="최종 금액 (원)"
+                      placeholder="최종 금액 (원, 음수 가능)"
                       value={priceOverride}
-                      onChange={(e) => setPriceOverride(e.target.value.replace(/[^0-9]/g, ""))}
+                      onChange={(e) => {
+                        // 숫자 · 선두 '-' 만 허용 (환불·조정용 음수 허용)
+                        let v = e.target.value.replace(/[^0-9-]/g, "");
+                        // '-' 는 맨 앞 한 번만 허용
+                        const hasLeadingMinus = v.startsWith("-");
+                        v = v.replace(/-/g, "");
+                        if (hasLeadingMinus) v = "-" + v;
+                        setPriceOverride(v);
+                      }}
                       style={inputStyle}
                     />
                     <input
