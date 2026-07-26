@@ -236,7 +236,6 @@ export async function createReservation(input: CreateReservationInput) {
       packages: toStored(quote.lines),
       package_label: quote.packageLabel,
       season: quote.season,
-      group_size: FIXED_GROUP_SIZE,
       guests_count: input.guestsCount,
       check_in: input.checkIn,
       check_out: input.checkOut,
@@ -322,7 +321,6 @@ export async function adminCreateReservation(
       packages: toStored(quote.lines),
       package_label: quote.packageLabel,
       season: quote.season,
-      group_size: FIXED_GROUP_SIZE,
       guests_count: input.guestsCount,
       check_in: input.checkIn,
       check_out: input.checkOut,
@@ -368,7 +366,6 @@ type ReservationRow = {
   packages: unknown;
   package_label: string;
   season: string;
-  group_size: string;
   guests_count: number;
   check_in: string;
   check_out: string;
@@ -552,7 +549,6 @@ export type AdminReservationRow = {
   package_label: string;
   room_key: RoomKey | null;
   season: string;
-  group_size: string;
   guests_count: number;
   check_in: string;
   check_out: string;
@@ -611,7 +607,7 @@ export async function listReservationsForAdmin(opts: {
   let query = supabase
     .from("reservations")
     .select(
-      "id,status,packages,package_label,room_key,season,group_size,guests_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
+      "id,status,packages,package_label,room_key,season,guests_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
     )
     .order("created_at", { ascending: false })
     .limit(500);
@@ -647,7 +643,6 @@ export async function listReservationsForAdmin(opts: {
       package_label: r.package_label,
       room_key: isRoomKey(r.room_key) ? r.room_key : null,
       season: r.season,
-      group_size: r.group_size,
       guests_count: r.guests_count,
       check_in: r.check_in,
       check_out: r.check_out,

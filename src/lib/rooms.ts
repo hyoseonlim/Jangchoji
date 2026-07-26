@@ -6,18 +6,25 @@
 //    - 4인실, 5인실, 6인실 : A/B 각 2개씩 (총 6)
 //    - 8인실 : 1개
 //    DB reservations.room_key 는 물리 객실 값을 저장.
+//
+// 실제 호수 매핑 (관리자 표시용) :
+//   1호 = 8인실
+//   2호·3호 = 4인실 A · B
+//   4호·5호 = 5인실 A · B
+//   6호·7호 = 6인실 A · B
 
 export const ROOM_TYPES = ["room_4", "room_5", "room_6", "room_8"] as const;
 export type RoomType = (typeof ROOM_TYPES)[number];
 
+// 관리자 대시보드 · 편집 UI 에서 표시되는 순서 (1호 → 7호)
 export const ROOM_KEYS = [
+  "room_8",
   "room_4_a",
   "room_4_b",
   "room_5_a",
   "room_5_b",
   "room_6_a",
   "room_6_b",
-  "room_8",
 ] as const;
 export type RoomKey = (typeof ROOM_KEYS)[number];
 
@@ -27,7 +34,7 @@ export type RoomTypeInfo = {
   minGuests: number;
   maxGuests: number;
   hasLoft: boolean;
-  physicals: readonly RoomKey[]; // ["room_4_a", "room_4_b"]
+  physicals: readonly RoomKey[];
 };
 
 export const ROOM_TYPE_META: Record<RoomType, RoomTypeInfo> = {
@@ -68,7 +75,10 @@ export const ROOM_TYPE_META: Record<RoomType, RoomTypeInfo> = {
 export type RoomInfo = {
   key: RoomKey;
   type: RoomType;
-  title: string; // "4인실 A" · "8인실"
+  roomNumber: number; // 1~7 실제 호수
+  title: string; // "1호 (8인실)" · "2호 (4인실 A)"
+  shortTitle: string; // "1호"
+  typeTitle: string; // "8인실" · "4인실 A"
   minGuests: number;
   maxGuests: number;
   hasLoft: boolean;
@@ -76,13 +86,90 @@ export type RoomInfo = {
 };
 
 export const ROOMS: Record<RoomKey, RoomInfo> = {
-  room_4_a: { key: "room_4_a", type: "room_4", title: "4인실 A", minGuests: 4, maxGuests: 4, hasLoft: false, sublabel: "A" },
-  room_4_b: { key: "room_4_b", type: "room_4", title: "4인실 B", minGuests: 4, maxGuests: 4, hasLoft: false, sublabel: "B" },
-  room_5_a: { key: "room_5_a", type: "room_5", title: "5인실 A", minGuests: 5, maxGuests: 6, hasLoft: true, sublabel: "A" },
-  room_5_b: { key: "room_5_b", type: "room_5", title: "5인실 B", minGuests: 5, maxGuests: 6, hasLoft: true, sublabel: "B" },
-  room_6_a: { key: "room_6_a", type: "room_6", title: "6인실 A", minGuests: 6, maxGuests: 8, hasLoft: true, sublabel: "A" },
-  room_6_b: { key: "room_6_b", type: "room_6", title: "6인실 B", minGuests: 6, maxGuests: 8, hasLoft: true, sublabel: "B" },
-  room_8: { key: "room_8", type: "room_8", title: "8인실", minGuests: 8, maxGuests: 10, hasLoft: false, sublabel: null },
+  room_8: {
+    key: "room_8",
+    type: "room_8",
+    roomNumber: 1,
+    title: "1호 (8인실)",
+    shortTitle: "1호",
+    typeTitle: "8인실",
+    minGuests: 8,
+    maxGuests: 10,
+    hasLoft: false,
+    sublabel: null,
+  },
+  room_4_a: {
+    key: "room_4_a",
+    type: "room_4",
+    roomNumber: 2,
+    title: "2호 (4인실 A)",
+    shortTitle: "2호",
+    typeTitle: "4인실 A",
+    minGuests: 4,
+    maxGuests: 4,
+    hasLoft: false,
+    sublabel: "A",
+  },
+  room_4_b: {
+    key: "room_4_b",
+    type: "room_4",
+    roomNumber: 3,
+    title: "3호 (4인실 B)",
+    shortTitle: "3호",
+    typeTitle: "4인실 B",
+    minGuests: 4,
+    maxGuests: 4,
+    hasLoft: false,
+    sublabel: "B",
+  },
+  room_5_a: {
+    key: "room_5_a",
+    type: "room_5",
+    roomNumber: 4,
+    title: "4호 (5인실 A)",
+    shortTitle: "4호",
+    typeTitle: "5인실 A",
+    minGuests: 5,
+    maxGuests: 6,
+    hasLoft: true,
+    sublabel: "A",
+  },
+  room_5_b: {
+    key: "room_5_b",
+    type: "room_5",
+    roomNumber: 5,
+    title: "5호 (5인실 B)",
+    shortTitle: "5호",
+    typeTitle: "5인실 B",
+    minGuests: 5,
+    maxGuests: 6,
+    hasLoft: true,
+    sublabel: "B",
+  },
+  room_6_a: {
+    key: "room_6_a",
+    type: "room_6",
+    roomNumber: 6,
+    title: "6호 (6인실 A)",
+    shortTitle: "6호",
+    typeTitle: "6인실 A",
+    minGuests: 6,
+    maxGuests: 8,
+    hasLoft: true,
+    sublabel: "A",
+  },
+  room_6_b: {
+    key: "room_6_b",
+    type: "room_6",
+    roomNumber: 7,
+    title: "7호 (6인실 B)",
+    shortTitle: "7호",
+    typeTitle: "6인실 B",
+    minGuests: 6,
+    maxGuests: 8,
+    hasLoft: true,
+    sublabel: "B",
+  },
 };
 
 export function isRoomKey(v: unknown): v is RoomKey {

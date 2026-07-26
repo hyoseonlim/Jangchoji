@@ -112,6 +112,7 @@ export const galleries = {
     "/images/info/25.png",
     "/images/info/26.png",
     "/images/info/27.png",
+    "/images/info/28.jpeg",
   ],
   activityDetails: {
     rides: Array.from({ length: 15 }, (_, i) => `/images/놀이기구/상세/${i + 1}.jpeg`),

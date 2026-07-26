@@ -1,35 +1,12 @@
 -- 예약 시스템 초기 스키마 + 시드 (최종본, 한 번만 실행)
 -- 실행 방법: Supabase Dashboard > SQL Editor 에 이 파일 내용 전체를 붙여넣고 Run
--- 재실행 안전: 스키마 CREATE 는 최초 1회만 정상 동작. 재실행 시 "already exists" 오류가 나면
---             각 CREATE 문 앞에 DROP 을 넣어 초기화하거나, seed 섹션(TRUNCATE ... INSERT)만 별도로 실행하세요.
 --
 -- 관리자(admins) 테이블은 5명 이내 소규모 운영이므로 .env(ADMIN_USERS) 로 관리 (테이블 없음).
 --
--- ─────────────────────────────────────────────────────────────────
--- 기존 DB 를 이미 만드셨다면(재생성하지 않을 경우), 아래 ALTER 만 실행하면 관리자 편집 기능이 활성화됩니다.
--- ─────────────────────────────────────────────────────────────────
--- ALTER TABLE reservations
---   ADD COLUMN IF NOT EXISTS source             TEXT NOT NULL DEFAULT 'online' CHECK (source IN ('online','manual')),
---   ADD COLUMN IF NOT EXISTS created_by_admin   TEXT,
---   ADD COLUMN IF NOT EXISTS price_override     INTEGER CHECK (price_override IS NULL OR price_override >= 0),
---   ADD COLUMN IF NOT EXISTS price_note         TEXT,
---   ADD COLUMN IF NOT EXISTS last_edited_at     TIMESTAMPTZ,
---   ADD COLUMN IF NOT EXISTS last_edited_by     TEXT;
--- ALTER TABLE reservation_history
---   ADD COLUMN IF NOT EXISTS changes            JSONB;
---
--- ▶ 물리 객실 확장 (4/5/6인실 A/B 각 2개, 8인실 1개 = 총 7개)
--- ★ 반드시 DROP → UPDATE → ADD 순서로 실행 (기존 CHECK 가 새 값 'room_4_a' 를 거부하므로).
--- 1) 옛 CHECK 제약 먼저 제거
--- ALTER TABLE reservations DROP CONSTRAINT IF EXISTS reservations_room_key_check;
--- 2) 데이터 마이그레이션 : room_4 → room_4_a 등
--- UPDATE reservations SET room_key = 'room_4_a' WHERE room_key = 'room_4';
--- UPDATE reservations SET room_key = 'room_5_a' WHERE room_key = 'room_5';
--- UPDATE reservations SET room_key = 'room_6_a' WHERE room_key = 'room_6';
--- 3) 새 CHECK 제약 추가
--- ALTER TABLE reservations
---   ADD CONSTRAINT reservations_room_key_check
---   CHECK (room_key IS NULL OR room_key IN ('room_4_a','room_4_b','room_5_a','room_5_b','room_6_a','room_6_b','room_8'));
+-- 초기화(전체 재실행)가 필요하면 아래를 먼저 실행하세요 :
+--   DROP TABLE IF EXISTS reservation_history, reservation_guests, reservations, products CASCADE;
+--   DROP FUNCTION IF EXISTS transition_reservation(INTEGER, reservation_status, TEXT, TEXT);
+--   DROP TYPE IF EXISTS reservation_status;
 
 BEGIN;
 
@@ -44,7 +21,9 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE TYPE reservation_status AS ENUM ('pending', 'confirmed', 'cancelled');
 
 ------------------------------------------------------------
--- products : 성수기/비수기 × 4인/2-3인 × 평일/토요일 × 10 config = 80행
+-- products : 성수기·비수기 × 4/3/2인 × 평일·토요일 × 10 config = 120행
+--   config_key : rides3 · rides5 · morning · afternoon · allday
+--                · rides3_bbq · rides5_bbq · morning_bbq · afternoon_bbq · allday_bbq
 ------------------------------------------------------------
 CREATE TABLE products (
   id           SERIAL PRIMARY KEY,
@@ -64,42 +43,42 @@ CREATE INDEX idx_products_filter ON products (season, group_size, day_type) WHER
 
 ------------------------------------------------------------
 -- reservations
---   packages : 인원별로 각자 선택한 패키지 목록 (JSONB). 형태:
+--   packages           : 인원별 패키지 선택 (JSONB). 예 :
 --     [
 --       { "configKey": "rides3", "label": "숙박 + 놀이기구 3종",
 --         "quantity": 3, "perPersonSubtotal": 165000, "lineTotal": 495000 },
 --       { "configKey": "rides5", "label": "...", "quantity": 2, "perPersonSubtotal": 207000, "lineTotal": 414000 }
 --     ]
 --     Σ quantity == guests_count · Σ lineTotal == total_price (앱 레벨 보장).
---   package_label : 관리자 목록 표시용 요약 문자열 ("3종×3, 5종×2").
+--   package_label      : 관리자 목록 요약 ("3종×3, 5종×2").
 --   depositor_name_enc : 입금자명 (대표자와 다를 수 있음). AES-256-GCM 암호화.
---   room_key : 예약된 객실 (4/5/6/8인실). 물리 객실 1개씩만 존재하므로
---              동일 room_key + 날짜 범위 겹침 예약은 EXCLUDE 제약으로 차단.
+--   room_key           : 물리 객실 (4/5/6인실 각 A·B 2개, 8인실 1개 = 총 7개).
+--                        동일 room_key + 날짜 범위 겹침 예약은 EXCLUDE 제약으로 차단.
+--   source             : online = 웹 예약 폼, manual = 관리자 수기 등록.
+--   price_override     : 계산가와 다른 금액을 최종가로 저장할 때 (할인·특별가 등).
+--                        설정 시 total_price 는 이 값. price_note 로 사유 기록.
 ------------------------------------------------------------
 CREATE TABLE reservations (
   id                 SERIAL PRIMARY KEY,
   packages           JSONB NOT NULL,
   package_label      TEXT NOT NULL,
   season             TEXT NOT NULL CHECK (season IN ('peak','off','mixed')),
-  group_size         TEXT NOT NULL CHECK (group_size IN ('4','3','2')),
   guests_count       INTEGER NOT NULL CHECK (guests_count > 0),
   check_in           DATE NOT NULL,
   check_out          DATE NOT NULL,
   total_price        INTEGER NOT NULL CHECK (total_price >= 0),
   status             reservation_status NOT NULL DEFAULT 'pending',
+  room_key           TEXT CHECK (room_key IS NULL OR room_key IN (
+                       'room_4_a','room_4_b','room_5_a','room_5_b','room_6_a','room_6_b','room_8'
+                     )),
+  source             TEXT NOT NULL DEFAULT 'online' CHECK (source IN ('online','manual')),
+  created_by_admin   TEXT,
+  price_override     INTEGER CHECK (price_override IS NULL OR price_override >= 0),
+  price_note         TEXT,
   memo               TEXT,
   depositor_name_enc TEXT,
-  -- 물리 객실 : 4/5/6인실 각 A/B 2개씩, 8인실 1개 = 총 7개
-  room_key           TEXT CHECK (room_key IS NULL OR room_key IN ('room_4_a','room_4_b','room_5_a','room_5_b','room_6_a','room_6_b','room_8')),
-  -- 예약 출처 : online = 웹 예약 폼, manual = 관리자 수기 등록
-  source             TEXT NOT NULL DEFAULT 'online' CHECK (source IN ('online','manual')),
-  created_by_admin   TEXT, -- 수기 등록한 관리자 아이디 (source='manual' 인 경우)
-  -- 금액 오버라이드 : 계산가와 다른 금액을 최종가로 사용해야 할 때 (할인/특별가/협의금액 등)
-  --   설정 시 total_price 는 이 값을 저장하고, UI 에서 재계산해 비교 표시
-  price_override     INTEGER CHECK (price_override IS NULL OR price_override >= 0),
-  price_note         TEXT, -- 오버라이드 사유 (감사)
   last_edited_at     TIMESTAMPTZ,
-  last_edited_by     TEXT, -- 마지막 편집 관리자 아이디
+  last_edited_by     TEXT,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (check_out > check_in),
@@ -141,21 +120,22 @@ CREATE UNIQUE INDEX uq_reservation_representative
   ON reservation_guests(reservation_id) WHERE is_representative;
 
 ------------------------------------------------------------
--- reservation_history : 상태 변경 감사 로그.
+-- reservation_history : 상태 변경 · 편집 감사 로그.
 --   admin_username     : .env 아이디 스냅샷 (로그인 식별자)
 --   admin_display_name : 액션 발생 시점의 관리자 이름 스냅샷 (표시용)
---   두 값을 함께 저장해서 나중에 .env 를 변경/삭제해도 지난 이력은 당시 정보 그대로 유지.
+--     두 값을 함께 저장해서 나중에 .env 를 변경/삭제해도 지난 이력은 당시 정보 그대로 유지.
+--   action             : created | admin_created | confirmed | cancelled | edited
+--   changes            : action='edited' 인 경우 필드 diff (JSONB)
+--     [{ "field": "check_in", "before": "2026-08-01", "after": "2026-08-02" }, ...]
 ------------------------------------------------------------
 CREATE TABLE reservation_history (
   id                 SERIAL PRIMARY KEY,
   reservation_id     INTEGER NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
   admin_username     TEXT,
   admin_display_name TEXT,
-  action             TEXT NOT NULL, -- created | admin_created | confirmed | cancelled | edited
+  action             TEXT NOT NULL,
   before_status      reservation_status,
   after_status       reservation_status,
-  -- 편집 이력 diff : action='edited' 인 경우 어떤 필드가 어떻게 바뀌었는지
-  -- [{ "field": "check_in", "before": "2026-08-01", "after": "2026-08-02" }, ...]
   changes            JSONB,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -223,8 +203,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO service_role;
 
 ------------------------------------------------------------
--- products 시드 : 성수기/비수기 × 4인/2-3인 × 평일/토요일 × 10 config = 80행
---   현 스코프상 UI 에서는 group_size='4' 만 사용. '2-3' 데이터는 향후 확장 대비 보관.
+-- products 시드 : 120행 (성수기·비수기 × 4/3/2인 × 평일·토요일 × 10 config)
+--   온라인 예약 폼은 4인 기준만 노출, 3인·2인 티어는 요금표 참조용.
 ------------------------------------------------------------
 INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, price) VALUES
 -- ===== peak · 4인 · weekday =====
@@ -233,7 +213,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('peak','4','weekday','morning',       '숙박 + 놀이기구 오전무제한',      false,  89000),
 ('peak','4','weekday','afternoon',     '숙박 + 놀이기구 오후무제한',      false,  99000),
 ('peak','4','weekday','allday',        '숙박 + 놀이기구 종일무제한',      false, 109000),
-('peak','4','weekday','stay_bbq',      '숙박 + BBQ',                      true,   69000),
 ('peak','4','weekday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,   94000),
 ('peak','4','weekday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  108000),
 ('peak','4','weekday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  118000),
@@ -245,7 +224,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('peak','4','saturday','morning',       '숙박 + 놀이기구 오전무제한',      false,  99000),
 ('peak','4','saturday','afternoon',     '숙박 + 놀이기구 오후무제한',      false, 109000),
 ('peak','4','saturday','allday',        '숙박 + 놀이기구 종일무제한',      false, 119000),
-('peak','4','saturday','stay_bbq',      '숙박 + BBQ',                      true,   79000),
 ('peak','4','saturday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,  104000),
 ('peak','4','saturday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  118000),
 ('peak','4','saturday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  128000),
@@ -257,7 +235,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('peak','3','weekday','morning',       '숙박 + 놀이기구 오전무제한',      false, 100000),
 ('peak','3','weekday','afternoon',     '숙박 + 놀이기구 오후무제한',      false, 110000),
 ('peak','3','weekday','allday',        '숙박 + 놀이기구 종일무제한',      false, 120000),
-('peak','3','weekday','stay_bbq',      '숙박 + BBQ',                      true,   79000),
 ('peak','3','weekday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,  104000),
 ('peak','3','weekday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  119000),
 ('peak','3','weekday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  129000),
@@ -269,7 +246,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('peak','3','saturday','morning',       '숙박 + 놀이기구 오전무제한',      false, 110000),
 ('peak','3','saturday','afternoon',     '숙박 + 놀이기구 오후무제한',      false, 120000),
 ('peak','3','saturday','allday',        '숙박 + 놀이기구 종일무제한',      false, 130000),
-('peak','3','saturday','stay_bbq',      '숙박 + BBQ',                      true,   89000),
 ('peak','3','saturday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,  114000),
 ('peak','3','saturday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  129000),
 ('peak','3','saturday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  139000),
@@ -281,7 +257,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('peak','2','weekday','morning',       '숙박 + 놀이기구 오전무제한',      false, 110000),
 ('peak','2','weekday','afternoon',     '숙박 + 놀이기구 오후무제한',      false, 120000),
 ('peak','2','weekday','allday',        '숙박 + 놀이기구 종일무제한',      false, 130000),
-('peak','2','weekday','stay_bbq',      '숙박 + BBQ',                      true,   89000),
 ('peak','2','weekday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,  114000),
 ('peak','2','weekday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  129000),
 ('peak','2','weekday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  139000),
@@ -293,7 +268,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('peak','2','saturday','morning',       '숙박 + 놀이기구 오전무제한',      false, 120000),
 ('peak','2','saturday','afternoon',     '숙박 + 놀이기구 오후무제한',      false, 130000),
 ('peak','2','saturday','allday',        '숙박 + 놀이기구 종일무제한',      false, 140000),
-('peak','2','saturday','stay_bbq',      '숙박 + BBQ',                      true,   99000),
 ('peak','2','saturday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,  124000),
 ('peak','2','saturday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  139000),
 ('peak','2','saturday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  149000),
@@ -305,7 +279,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('off','4','weekday','morning',       '숙박 + 놀이기구 오전무제한',      false,  79000),
 ('off','4','weekday','afternoon',     '숙박 + 놀이기구 오후무제한',      false,  89000),
 ('off','4','weekday','allday',        '숙박 + 놀이기구 종일무제한',      false,  99000),
-('off','4','weekday','stay_bbq',      '숙박 + BBQ',                      true,   59000),
 ('off','4','weekday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,   84000),
 ('off','4','weekday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,   98000),
 ('off','4','weekday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  108000),
@@ -317,7 +290,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('off','4','saturday','morning',       '숙박 + 놀이기구 오전무제한',      false,  89000),
 ('off','4','saturday','afternoon',     '숙박 + 놀이기구 오후무제한',      false,  99000),
 ('off','4','saturday','allday',        '숙박 + 놀이기구 종일무제한',      false, 109000),
-('off','4','saturday','stay_bbq',      '숙박 + BBQ',                      true,   69000),
 ('off','4','saturday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,   94000),
 ('off','4','saturday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  108000),
 ('off','4','saturday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  118000),
@@ -329,7 +301,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('off','3','weekday','morning',       '숙박 + 놀이기구 오전무제한',      false,  90000),
 ('off','3','weekday','afternoon',     '숙박 + 놀이기구 오후무제한',      false, 100000),
 ('off','3','weekday','allday',        '숙박 + 놀이기구 종일무제한',      false, 110000),
-('off','3','weekday','stay_bbq',      '숙박 + BBQ',                      true,   69000),
 ('off','3','weekday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,   94000),
 ('off','3','weekday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  109000),
 ('off','3','weekday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  119000),
@@ -341,7 +312,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('off','3','saturday','morning',       '숙박 + 놀이기구 오전무제한',      false, 100000),
 ('off','3','saturday','afternoon',     '숙박 + 놀이기구 오후무제한',      false, 110000),
 ('off','3','saturday','allday',        '숙박 + 놀이기구 종일무제한',      false, 120000),
-('off','3','saturday','stay_bbq',      '숙박 + BBQ',                      true,   79000),
 ('off','3','saturday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,  104000),
 ('off','3','saturday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  119000),
 ('off','3','saturday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  129000),
@@ -353,7 +323,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('off','2','weekday','morning',       '숙박 + 놀이기구 오전무제한',      false, 100000),
 ('off','2','weekday','afternoon',     '숙박 + 놀이기구 오후무제한',      false, 110000),
 ('off','2','weekday','allday',        '숙박 + 놀이기구 종일무제한',      false, 120000),
-('off','2','weekday','stay_bbq',      '숙박 + BBQ',                      true,   79000),
 ('off','2','weekday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,  104000),
 ('off','2','weekday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  119000),
 ('off','2','weekday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  129000),
@@ -365,7 +334,6 @@ INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, p
 ('off','2','saturday','morning',       '숙박 + 놀이기구 오전무제한',      false, 110000),
 ('off','2','saturday','afternoon',     '숙박 + 놀이기구 오후무제한',      false, 120000),
 ('off','2','saturday','allday',        '숙박 + 놀이기구 종일무제한',      false, 130000),
-('off','2','saturday','stay_bbq',      '숙박 + BBQ',                      true,   89000),
 ('off','2','saturday','rides3_bbq',    '숙박 + 놀이기구 3종 + BBQ',       true,  114000),
 ('off','2','saturday','rides5_bbq',    '숙박 + 놀이기구 5종 + BBQ',       true,  129000),
 ('off','2','saturday','morning_bbq',   '숙박 + 놀이기구 오전무제한 + BBQ', true,  139000),

@@ -692,7 +692,12 @@ function ByDateGridView({
                   const room = ROOMS[rk];
                   const occupied = cellByRoom.get(rk);
                   return (
-                    <RoomCell key={rk} label={room.title} reservation={occupied ?? null} />
+                    <RoomCell
+                      key={rk}
+                      primary={room.shortTitle}
+                      secondary={room.typeTitle}
+                      reservation={occupied ?? null}
+                    />
                   );
                 })}
               </div>
@@ -711,16 +716,19 @@ function ByDateGridView({
 }
 
 function RoomCell({
-  label,
+  primary,
+  secondary,
   reservation,
 }: {
-  label: string;
+  primary: string;
+  secondary: string;
   reservation: AdminReservationRow | null;
 }) {
   const occupied = reservation != null;
   const c = reservation ? STATUS_COLOR[reservation.status] : null;
   return (
     <div
+      title={`${primary} · ${secondary}`}
       style={{
         padding: "6px 4px",
         border: occupied
@@ -729,31 +737,43 @@ function RoomCell({
         borderRadius: "2px",
         backgroundColor: occupied ? (c?.bg ?? "transparent") : "transparent",
         textAlign: "center",
-        minHeight: "42px",
+        minHeight: "48px",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
         alignItems: "center",
-        gap: "1px",
+        gap: "0px",
       }}
     >
       <div
         style={{
-          fontSize: "10px",
-          fontWeight: 700,
-          color: occupied ? c?.fg : "rgba(255,255,255,0.35)",
-          letterSpacing: "-0.01em",
-          whiteSpace: "nowrap",
+          fontSize: "12px",
+          fontWeight: 900,
+          color: occupied ? c?.fg : "rgba(255,255,255,0.55)",
+          letterSpacing: "-0.02em",
+          lineHeight: 1.1,
         }}
       >
-        {label}
+        {primary}
+      </div>
+      <div
+        style={{
+          fontSize: "9px",
+          fontWeight: 600,
+          color: occupied ? c?.fg : "rgba(255,255,255,0.3)",
+          opacity: occupied ? 0.8 : 1,
+          lineHeight: 1.1,
+        }}
+      >
+        {secondary}
       </div>
       {occupied && reservation?.representative && (
         <div
           style={{
+            marginTop: "2px",
             fontSize: "10px",
             color: c?.fg,
-            fontWeight: 800,
+            fontWeight: 700,
             maxWidth: "100%",
             overflow: "hidden",
             textOverflow: "ellipsis",
