@@ -1,7 +1,11 @@
 // Static galleries served from /public/images/<folder>/*.
 // To add images: drop new files into public/images/<folder>/ and append to the list below.
+// Paths are percent-encoded so Next.js can safely emit them in HTTP Link preload headers
+// (raw non-ASCII characters break the header ByteString requirement).
 
-const bbqPhotos = [
+const enc = (paths: string[]) => paths.map(encodeURI);
+
+const bbqPhotos = enc([
   "/images/바베큐/bbq1.png",
   "/images/바베큐/bbq2.png",
   "/images/바베큐/bbq3.png",
@@ -10,10 +14,10 @@ const bbqPhotos = [
   "/images/바베큐/bbq6.jpeg",
   "/images/바베큐/bbq7.jpeg",
   "/images/바베큐/bbq8.jpeg",
-];
+]);
 
 export const galleries = {
-  rides: [
+  rides: enc([
     "/images/놀이기구/ride1.jpeg",
     "/images/놀이기구/ride2.jpeg",
     "/images/놀이기구/ride3.jpeg",
@@ -21,17 +25,17 @@ export const galleries = {
     "/images/놀이기구/ride5.jpeg",
     "/images/놀이기구/ride7.jpeg",
     "/images/놀이기구/ride8.jpeg",
-  ],
-  ski: [
+  ]),
+  ski: enc([
     "/images/스키보드/ski1.jpeg",
     "/images/스키보드/ski2.jpeg",
-  ],
-  surf: [
+  ]),
+  surf: enc([
     "/images/서핑/surf1.jpeg",
     "/images/서핑/surf2.jpeg",
     "/images/서핑/surf3.jpeg",
-  ],
-  waterpark: [
+  ]),
+  waterpark: enc([
     "/images/워터파크/waterpark1.jpeg",
     "/images/워터파크/waterpark2.jpeg",
     "/images/워터파크/waterpark3.jpeg",
@@ -39,8 +43,8 @@ export const galleries = {
     "/images/워터파크/waterpark5.jpeg",
     "/images/워터파크/waterpark6.jpeg",
     "/images/워터파크/waterpark7.jpeg",
-  ],
-  cafe: [
+  ]),
+  cafe: enc([
     "/images/배카페/cafe1.jpeg",
     "/images/배카페/cafe2.jpeg",
     "/images/배카페/cafe3.jpeg",
@@ -49,9 +53,9 @@ export const galleries = {
     "/images/배카페/cafe6.jpeg",
     "/images/배카페/cafe7.jpeg",
     "/images/배카페/cafe8.jpeg",
-  ],
+  ]),
   bbq: bbqPhotos,
-  rooftop: [
+  rooftop: enc([
     "/images/루프탑/rooftop1.jpeg",
     "/images/루프탑/rooftop2.jpeg",
     "/images/루프탑/rooftop3.jpeg",
@@ -61,8 +65,8 @@ export const galleries = {
     "/images/루프탑/rooftop7.jpeg",
     "/images/루프탑/rooftop8.jpeg",
     "/images/루프탑/rooftop9.jpeg",
-  ],
-  stay: [
+  ]),
+  stay: enc([
     "/images/숙소/acco1.jpeg",
     "/images/숙소/acco2.jpeg",
     "/images/숙소/acco3.jpeg",
@@ -73,8 +77,8 @@ export const galleries = {
     "/images/숙소/acco8.jpeg",
     "/images/숙소/acco9.jpeg",
     "/images/숙소/acco10.jpeg",
-  ],
-  main: [
+  ]),
+  main: enc([
     "/images/메인/0.jpeg",
     "/images/메인/1.jpeg",
     "/images/메인/2.jpeg",
@@ -83,8 +87,8 @@ export const galleries = {
     "/images/메인/5.jpeg",
     "/images/메인/6.jpeg",
     "/images/메인/7.jpeg",
-  ],
-  info: [
+  ]),
+  info: enc([
     "/images/info/1.png",
     "/images/info/2.png",
     "/images/info/3.png",
@@ -113,22 +117,22 @@ export const galleries = {
     "/images/info/26.png",
     "/images/info/27.png",
     "/images/info/28.jpeg",
-  ],
+  ]),
   activityDetails: {
-    rides: Array.from({ length: 15 }, (_, i) => `/images/놀이기구/상세/${i + 1}.jpeg`),
-    ski: Array.from({ length: 15 }, (_, i) => `/images/스키보드/상세/${i + 1}.jpeg`),
-    wakesurf: Array.from({ length: 19 }, (_, i) => `/images/서핑/상세/${i + 1}.jpeg`),
-    waterpark: Array.from({ length: 16 }, (_, i) => `/images/워터파크/상세/${i + 1}.jpeg`),
+    rides: Array.from({ length: 15 }, (_, i) => encodeURI(`/images/놀이기구/상세/${i + 1}.jpeg`)),
+    ski: Array.from({ length: 15 }, (_, i) => encodeURI(`/images/스키보드/상세/${i + 1}.jpeg`)),
+    wakesurf: Array.from({ length: 19 }, (_, i) => encodeURI(`/images/서핑/상세/${i + 1}.jpeg`)),
+    waterpark: Array.from({ length: 16 }, (_, i) => encodeURI(`/images/워터파크/상세/${i + 1}.jpeg`)),
     bbq: bbqPhotos,
-    cafe: Array.from({ length: 10 }, (_, i) => `/images/배카페/상세/${i + 1}.jpeg`),
-    rooftop: Array.from({ length: 22 }, (_, i) => `/images/루프탑/상세/${i + 1}.jpeg`),
-    stay4: ["/images/숙소/상세/4인실.jpeg"],
-    stay5: ["/images/숙소/상세/5인실.jpeg"],
-    stay6: ["/images/숙소/상세/6인실.jpeg", "/images/숙소/상세/6인실1.jpeg"],
-    stay8: [
+    cafe: Array.from({ length: 10 }, (_, i) => encodeURI(`/images/배카페/상세/${i + 1}.jpeg`)),
+    rooftop: Array.from({ length: 22 }, (_, i) => encodeURI(`/images/루프탑/상세/${i + 1}.jpeg`)),
+    stay4: enc(["/images/숙소/상세/4인실.jpeg"]),
+    stay5: enc(["/images/숙소/상세/5인실.jpeg"]),
+    stay6: enc(["/images/숙소/상세/6인실.jpeg", "/images/숙소/상세/6인실1.jpeg"]),
+    stay8: enc([
       "/images/숙소/상세/8인실.jpeg",
       "/images/숙소/상세/8인실1.jpeg",
       "/images/숙소/상세/8인실2.jpeg",
-    ],
+    ]),
   },
 };

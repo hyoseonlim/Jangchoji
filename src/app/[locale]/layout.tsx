@@ -75,12 +75,6 @@ export async function generateMetadata({
       description: dict.meta.ogDescription,
       images: [OG_IMAGE_PATH],
     },
-    other: {
-      "itemprop:name": dict.meta.siteName,
-      "itemprop:telephone": `+82-${dict.brand.phone.replace(/^0/, "")}`,
-      "itemprop:postalCode": dict.brand.address.postalCode,
-      "itemprop:addressCountry": "KR",
-    },
   };
 }
 

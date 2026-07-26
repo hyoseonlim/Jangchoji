@@ -3,8 +3,8 @@
 import { useState } from "react";
 import type { Dictionary } from "@/i18n";
 
-const consentFormUrl = "/images/미성년자 숙박 동의서 양식.jpg";
-const consentExampleUrl = "/images/미성년자 숙박 동의서 작성예시.jpg";
+const consentFormUrl = encodeURI("/images/미성년자 숙박 동의서 양식.jpg");
+const consentExampleUrl = encodeURI("/images/미성년자 숙박 동의서 작성예시.jpg");
 
 export function MinorPolicy({ dict }: { dict: Dictionary }) {
   const [showExample, setShowExample] = useState(false);

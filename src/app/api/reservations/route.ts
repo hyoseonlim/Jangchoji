@@ -103,13 +103,15 @@ export async function POST(req: Request) {
 
     const rep = guests.find((g) => g.isRepresentative);
     const priceStr = new Intl.NumberFormat("ko-KR").format(quote.total);
+    const memoLine = memo && memo.trim().length > 0 ? `요청사항: ${memo.trim()}\n` : "";
     await notifyAdmin(
-      `🔔 예약 접수 🔔\n` +
       `날짜: ${reservation.check_in} ~ ${reservation.check_out}\n` +
-      `이름: ${rep?.name ?? "-"}\n` +
+      `예약자: ${rep?.name ?? "-"}\n` +
       `인원: ${reservation.guests_count}명\n` +
       `패키지명: ${quote.packageLabel}\n` +
-      `입금금액: ₩${priceStr}`,
+      `입금금액: ₩${priceStr}\n` +
+      memoLine +
+      `[확인하러 가기](https://건전한레저.com/ko/admin)`,
     );
 
     return NextResponse.json({
