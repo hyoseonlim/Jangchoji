@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createReservation } from "@/lib/reservations";
 import { isConfigKey, type PackageSelections } from "@/lib/pricing";
-import { isRoomType, ROOM_TYPE_META, ROOMS } from "@/lib/rooms";
-import { notifyAdmin } from "@/lib/telegram";
+import { isRoomType, ROOM_TYPE_META } from "@/lib/rooms";
+import { notifyAdmin } from "@/lib/discord";
 
 export const runtime = "nodejs";
 
@@ -103,19 +103,13 @@ export async function POST(req: Request) {
 
     const rep = guests.find((g) => g.isRepresentative);
     const priceStr = new Intl.NumberFormat("ko-KR").format(quote.total);
-    const assignedRoomTitle = reservation.room_key
-      ? (ROOMS[reservation.room_key as keyof typeof ROOMS]?.title ?? reservation.room_key)
-      : "미지정";
     await notifyAdmin(
-      `<b>새 예약 접수</b>\n` +
-        `#${reservation.id} · ${quote.packageLabel}\n` +
-        `객실: ${assignedRoomTitle}\n` +
-        `일정: ${reservation.check_in} ~ ${reservation.check_out}\n` +
-        `인원: ${reservation.guests_count}명\n` +
-        `금액: ₩${priceStr}\n` +
-        `대표자: ${rep?.name ?? "-"}\n` +
-        `입금자명: ${depositorName ?? rep?.name ?? "-"}\n` +
-        `상태: 확정 대기`,
+      `🔔 예약 접수 🔔\n` +
+      `날짜: ${reservation.check_in} ~ ${reservation.check_out}\n` +
+      `이름: ${rep?.name ?? "-"}\n` +
+      `인원: ${reservation.guests_count}명\n` +
+      `패키지명: ${quote.packageLabel}\n` +
+      `입금금액: ₩${priceStr}`,
     );
 
     return NextResponse.json({
