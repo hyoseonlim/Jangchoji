@@ -13,6 +13,7 @@ import {
   perPersonStayTotalByConfig,
   priceRangeByConfig,
   summarizeSeasonFromRange,
+  PET_FEE_PER_DOG,
 } from "@/lib/pricing";
 import { ROOM_KEYS, ROOMS, type RoomKey } from "@/lib/rooms";
 import type { AdminReservationRow } from "@/lib/reservations";
@@ -85,6 +86,7 @@ export function ReservationEditor({
   const [checkIn, setCheckIn] = useState(() => initial?.check_in ?? todayISO(3));
   const [checkOut, setCheckOut] = useState(() => initial?.check_out ?? todayISO(4));
   const [guestsCount, setGuestsCount] = useState(() => initial?.guests_count ?? MIN_GUESTS);
+  const [petCount, setPetCount] = useState(() => initial?.pet_count ?? 0);
   const [roomKey, setRoomKey] = useState<RoomKey>(() => initial?.room_key ?? "room_4_a");
   const [availability, setAvailability] = useState<RoomAvailability>(ALL_AVAILABLE);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -112,6 +114,7 @@ export function ReservationEditor({
       setCheckIn(initial.check_in);
       setCheckOut(initial.check_out);
       setGuestsCount(initial.guests_count);
+      setPetCount(initial.pet_count ?? 0);
       setRoomKey(initial.room_key ?? "room_4_a");
       const sel: PackageSelections = {};
       for (const p of initial.packages) sel[p.configKey] = p.quantity;
@@ -136,6 +139,7 @@ export function ReservationEditor({
       setCheckIn(todayISO(3));
       setCheckOut(todayISO(4));
       setGuestsCount(MIN_GUESTS);
+      setPetCount(0);
       setRoomKey("room_4_a");
       setSelections({});
       setGuests([{ name: "", phone: "", isRepresentative: true }]);
@@ -168,7 +172,8 @@ export function ReservationEditor({
     [perPersonByConfig, selections],
   );
   const totalQuantity = selectionResult?.totalQuantity ?? 0;
-  const computedTotal = selectionResult?.total ?? 0;
+  const petFee = petCount * PET_FEE_PER_DOG;
+  const computedTotal = (selectionResult?.total ?? 0) + petFee;
   const season = useMemo(
     () => summarizeSeasonFromRange(checkIn, checkOut),
     [checkIn, checkOut],
@@ -292,6 +297,7 @@ export function ReservationEditor({
         packageSelections: selections,
         roomKey,
         guestsCount,
+        petCount,
         checkIn,
         checkOut,
         guests,
@@ -447,17 +453,33 @@ export function ReservationEditor({
               )}
             </Field>
 
-            {/* 인원 */}
-            <Field label="인원">
-              <div className="inline-flex items-center gap-2">
-                <button type="button" style={stepBtnStyle} onClick={() => setGuestsCount((n) => Math.max(1, n - 1))}>−</button>
-                <span style={{ minWidth: "48px", textAlign: "center", fontWeight: 800, fontSize: "16px", color: "#fff" }}>
-                  {guestsCount}
-                </span>
-                <button type="button" style={stepBtnStyle} onClick={() => setGuestsCount((n) => Math.min(MAX_GUESTS, n + 1))}>+</button>
-                <SubHint className="ml-2">최소 1명 · 최대 {MAX_GUESTS}명</SubHint>
-              </div>
-            </Field>
+            {/* 인원 및 반려견 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="숙박 인원">
+                <div className="inline-flex items-center gap-2">
+                  <button type="button" style={stepBtnStyle} onClick={() => setGuestsCount((n) => Math.max(1, n - 1))}>−</button>
+                  <span style={{ minWidth: "48px", textAlign: "center", fontWeight: 800, fontSize: "16px", color: "#fff" }}>
+                    {guestsCount}명
+                  </span>
+                  <button type="button" style={stepBtnStyle} onClick={() => setGuestsCount((n) => Math.min(MAX_GUESTS, n + 1))}>+</button>
+                </div>
+              </Field>
+
+              <Field label="반려견 동반 (마리당 +₩30,000)">
+                <div className="inline-flex items-center gap-2">
+                  <button type="button" style={stepBtnStyle} onClick={() => setPetCount((n) => Math.max(0, n - 1))}>−</button>
+                  <span style={{ minWidth: "48px", textAlign: "center", fontWeight: 800, fontSize: "16px", color: "#fff" }}>
+                    {petCount}마리
+                  </span>
+                  <button type="button" style={stepBtnStyle} onClick={() => setPetCount((n) => Math.min(10, n + 1))}>+</button>
+                  {petCount > 0 && (
+                    <span className="ml-1 text-xs" style={{ color: "#00C2D1", fontWeight: 700 }}>
+                      +₩{new Intl.NumberFormat("ko-KR").format(petFee)}
+                    </span>
+                  )}
+                </div>
+              </Field>
+            </div>
 
             {/* 객실 */}
             <Field label="객실">

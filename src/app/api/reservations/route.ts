@@ -91,10 +91,16 @@ export async function POST(req: Request) {
     return badRequest(err instanceof Error ? err.message : "예약자 정보 오류");
   }
 
+  const petCount =
+    typeof b.petCount === "number" && Number.isInteger(b.petCount) && b.petCount > 0
+      ? b.petCount
+      : 0;
+
   try {
     const { reservation, quote } = await createReservation({
       packageSelections: selections,
       guestsCount: b.guestsCount,
+      petCount,
       checkIn: b.checkIn,
       checkOut: b.checkOut,
       guests,
@@ -105,11 +111,13 @@ export async function POST(req: Request) {
 
     const rep = guests.find((g) => g.isRepresentative);
     const priceStr = new Intl.NumberFormat("ko-KR").format(quote.total);
+    const petLine = petCount > 0 ? `반려견: ${petCount}마리 (+₩${new Intl.NumberFormat("ko-KR").format(quote.petFee)})\n` : "";
     const memoLine = memo && memo.trim().length > 0 ? `요청사항: ${memo.trim()}\n` : "";
     await notifyAdmin(
       `날짜: ${reservation.check_in} ~ ${reservation.check_out}\n` +
       `예약자: ${rep?.name ?? "-"}\n` +
       `인원: ${reservation.guests_count}명\n` +
+      petLine +
       `패키지명: ${quote.packageLabel}\n` +
       `입금금액: ₩${priceStr}\n` +
       memoLine +

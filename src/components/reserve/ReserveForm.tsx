@@ -15,6 +15,7 @@ import {
   perPersonStayTotalByConfig,
   priceRangeByConfig,
   summarizeSeasonFromRange,
+  PET_FEE_PER_DOG,
 } from "@/lib/pricing";
 import { CopyableAccount } from "../CopyableAccount";
 
@@ -29,6 +30,8 @@ type DoneSnapshot = {
   checkOut: string;
   nights: number;
   guestsCount: number;
+  petCount: number;
+  petFee: number;
   lines: PackageLine[];
   season: "peak" | "off" | "mixed" | null;
 };
@@ -75,6 +78,7 @@ export function ReserveForm({
   const [checkIn, setCheckIn] = useState(() => todayISO(7));
   const [checkOut, setCheckOut] = useState(() => todayISO(8));
   const [guestsCount, setGuestsCount] = useState(MIN_GUESTS);
+  const [petCount, setPetCount] = useState(0);
   const [availability, setAvailability] = useState<Availability>({ state: "idle" });
   const [selections, setSelections] = useState<PackageSelections>(EMPTY_SELECTIONS);
   const [guests, setGuests] = useState<Guest[]>([
@@ -104,7 +108,8 @@ export function ReserveForm({
   );
   const totalQuantity = selectionResult?.totalQuantity ?? 0;
   const remainingQuantity = Math.max(0, guestsCount - totalQuantity);
-  const grandTotal = selectionResult?.total ?? 0;
+  const petFee = petCount * PET_FEE_PER_DOG;
+  const grandTotal = (selectionResult?.total ?? 0) + petFee;
   const season = useMemo(() => summarizeSeasonFromRange(checkIn, checkOut), [checkIn, checkOut]);
   const holidayNotes = useMemo(() => holidaysInRange(checkIn, checkOut), [checkIn, checkOut]);
 
@@ -265,6 +270,7 @@ export function ReserveForm({
         body: JSON.stringify({
           packageSelections: selections,
           guestsCount,
+          petCount,
           checkIn,
           checkOut,
           guests,
@@ -284,6 +290,8 @@ export function ReserveForm({
         checkOut,
         nights,
         guestsCount,
+        petCount,
+        petFee,
         lines: selectionResult?.lines ?? [],
         season,
       });
@@ -328,6 +336,9 @@ export function ReserveForm({
             <dl className="space-y-2" style={{ fontSize: "13px" }}>
               <Row k="일정" v={`${formatDateKo(done.checkIn)} → ${formatDateKo(done.checkOut)} · ${done.nights}박`} />
               <Row k="인원" v={`${done.guestsCount}명`} />
+              {done.petCount > 0 && (
+                <Row k="반려견 동반" v={`${done.petCount}마리 (+${won(done.petFee)})`} />
+              )}
               <Row k="객실" v={<span className="text-black/60">관리자 확인 후 배정</span>} />
               <Row
                 k="계절"
@@ -384,8 +395,8 @@ export function ReserveForm({
           >
             <span className="text-black" style={{ fontWeight: 700 }}>문의</span>
             <span className="text-black/75"> · </span>
-            <a href="tel:0503-7152-2755" className="text-black" style={{ fontWeight: 700 }}>
-              0503-7152-2755
+            <a href="tel:010-9159-6448" className="text-black" style={{ fontWeight: 700 }}>
+              010-9159-6448
             </a>
           </div>
           <Link
@@ -509,30 +520,67 @@ export function ReserveForm({
         )}
       </Section>
 
-      <Section title="2. 인원">
-        <div className="inline-flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => adjustGuestsCount(guestsCount - 1)}
-            disabled={guestsCount <= MIN_GUESTS}
-            style={{ ...stepBtnStyle, opacity: guestsCount <= MIN_GUESTS ? 0.4 : 1 }}
-          >
-            −
-          </button>
-          <span style={{ minWidth: "48px", textAlign: "center", fontWeight: 800, fontSize: "18px" }}>
-            {guestsCount}
-          </span>
-          <button
-            type="button"
-            onClick={() => adjustGuestsCount(guestsCount + 1)}
-            disabled={guestsCount >= MAX_GUESTS}
-            style={{ ...stepBtnStyle, opacity: guestsCount >= MAX_GUESTS ? 0.4 : 1 }}
-          >
-            +
-          </button>
-          <span className="text-black/55 ml-2" style={{ fontSize: "12px" }}>
-            최소 {MIN_GUESTS}명 · 최대 {MAX_GUESTS}명
-          </span>
+      <Section title="2. 인원 및 반려견 동반">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
+            <span className="block text-black/70 mb-2" style={{ fontSize: "12px", fontWeight: 600 }}>
+              숙박 인원
+            </span>
+            <div className="inline-flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => adjustGuestsCount(guestsCount - 1)}
+                disabled={guestsCount <= MIN_GUESTS}
+                style={{ ...stepBtnStyle, opacity: guestsCount <= MIN_GUESTS ? 0.4 : 1 }}
+              >
+                −
+              </button>
+              <span style={{ minWidth: "40px", textAlign: "center", fontWeight: 800, fontSize: "18px" }}>
+                {guestsCount}명
+              </span>
+              <button
+                type="button"
+                onClick={() => adjustGuestsCount(guestsCount + 1)}
+                disabled={guestsCount >= MAX_GUESTS}
+                style={{ ...stepBtnStyle, opacity: guestsCount >= MAX_GUESTS ? 0.4 : 1 }}
+              >
+                +
+              </button>
+            </div>
+            <p className="text-black/55 mt-1.5" style={{ fontSize: "11px" }}>
+              최소 {MIN_GUESTS}명 · 최대 {MAX_GUESTS}명
+            </p>
+          </div>
+
+          <div className="p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
+            <span className="block text-black/70 mb-2" style={{ fontSize: "12px", fontWeight: 600 }}>
+              반려견 동반 (마리당 +₩30,000)
+            </span>
+            <div className="inline-flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPetCount((prev) => Math.max(0, prev - 1))}
+                disabled={petCount <= 0}
+                style={{ ...stepBtnStyle, opacity: petCount <= 0 ? 0.4 : 1 }}
+              >
+                −
+              </button>
+              <span style={{ minWidth: "40px", textAlign: "center", fontWeight: 800, fontSize: "18px" }}>
+                {petCount}마리
+              </span>
+              <button
+                type="button"
+                onClick={() => setPetCount((prev) => Math.min(10, prev + 1))}
+                disabled={petCount >= 10}
+                style={{ ...stepBtnStyle, opacity: petCount >= 10 ? 0.4 : 1 }}
+              >
+                +
+              </button>
+            </div>
+            <p className="text-black/55 mt-1.5" style={{ fontSize: "11px" }}>
+              {petCount > 0 ? `반려견 추가 요금 +${won(petFee)}` : "반려견 미동반"}
+            </p>
+          </div>
         </div>
         <div className="mt-3">
           <AvailabilityBadge availability={availability} />
@@ -756,6 +804,9 @@ export function ReserveForm({
         <dl className="space-y-2" style={{ fontSize: "13px" }}>
           <Row k="일정" v={`${formatDateKo(checkIn)} → ${formatDateKo(checkOut)} · ${nights}박`} />
           <Row k="인원" v={`${guestsCount}명`} />
+          {petCount > 0 && (
+            <Row k="반려견 동반" v={`${petCount}마리 (+${won(petFee)})`} />
+          )}
           <Row k="객실" v={<span className="text-black/60">관리자 확인 후 배정</span>} />
           <Row k="계절" v={seasonLabel} />
         </dl>

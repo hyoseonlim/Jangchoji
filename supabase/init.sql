@@ -64,6 +64,7 @@ CREATE TABLE reservations (
   package_label      TEXT NOT NULL,
   season             TEXT NOT NULL CHECK (season IN ('peak','off','mixed')),
   guests_count       INTEGER NOT NULL CHECK (guests_count > 0),
+  pet_count          INTEGER NOT NULL DEFAULT 0 CHECK (pet_count >= 0),
   check_in           DATE NOT NULL,
   check_out          DATE NOT NULL,
   total_price        INTEGER NOT NULL, -- 환불·크레딧 등으로 음수도 허용

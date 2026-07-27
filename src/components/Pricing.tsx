@@ -333,8 +333,23 @@ export function Pricing({ dict }: { dict: Dictionary }) {
             </li>
             <li className="flex items-start gap-2">
               <span style={{ color: "#00C2D1", flexShrink: 0 }}>•</span>
-              {packages.notes.bbqPrefix}: {packages.bbqComposition}
+              <div>
+                <span>
+                  {packages.notes.bbqPrefix}: {packages.bbqComposition}
+                </span>
+                {"bbqNotice" in packages.notes && (
+                  <span className="block text-black/50 text-[12px] font-normal mt-0.5">
+                    {(packages.notes as Record<string, string>).bbqNotice}
+                  </span>
+                )}
+              </div>
             </li>
+            {"pet" in packages.notes && (
+              <li className="flex items-start gap-2">
+                <span style={{ color: "#00C2D1", flexShrink: 0 }}>•</span>
+                {(packages.notes as Record<string, string>).pet}
+              </li>
+            )}
             <li className="flex items-start gap-2">
               <span style={{ color: "#e11d48", flexShrink: 0 }}>•</span>
               {packages.notes.under4}

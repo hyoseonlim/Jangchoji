@@ -7,7 +7,7 @@ export const en: Dictionary = {
   brand: {
     displayName: "Water leisure",
     tag: "SINCE 2025",
-    phone: "0503-7152-2755",
+    phone: "010-9159-6448",
     ownerName: "장우진",
     ownerLabel: "장우진 (Owner)",
     bank: { label: "카카오뱅크", account: "3333-02-0271394", holder: "장우진" },
@@ -240,9 +240,11 @@ export const en: Dictionary = {
       notes: {
         waterpark: "Unlimited water park access included",
         bbqPrefix: "Unlimited BBQ includes",
+        bbqNotice: "(BBQ components are subject to change)",
+        pet: "Pet stay option: +₩30,000 per dog",
         under4: "Rates vary by party size — see the corresponding tab.",
       },
-      bbqComposition: "Meat · rice · ssamjang · ssammu · kimchi · sausage · dried radish · disposables",
+      bbqComposition: "Meat · rice · ssamjang · ssammu · kimchi · sausage · mushroom · disposables",
       rows: {
         peak: {
           "4": [
@@ -413,7 +415,7 @@ export const en: Dictionary = {
         title: "Unlimited BBQ",
         subtitle: "Premium BBQ after your water day",
         intro:
-          "Unlimited BBQ with meat, rice, sausage, kimchi, ssamjang, ssammu, king oyster mushroom, and disposables. The perfect way to end a day on the water.",
+          "Unlimited BBQ with meat, rice, sausage, kimchi, ssamjang, ssammu, mushroom, and disposables. (BBQ components are subject to change)",
         prices: [
           { label: "Included in package", price: 29000, note: "per person" },
           { label: "Same-day walk-in", price: 30000, note: "per person" },
@@ -426,7 +428,7 @@ export const en: Dictionary = {
         info: [
           "Unlimited BBQ service hours: 19:00 – 21:00 (weekends)",
           "After 21:00 guests are welcome to keep enjoying any remaining food at their seats",
-          "Includes: Meat · rice · sausage · kimchi · ssamjang · ssammu · king oyster mushroom · disposables",
+          "Includes: Meat · rice · sausage · kimchi · ssamjang · ssammu · mushroom · disposables (Subject to change)",
         ],
       },
       cafe: {
@@ -519,7 +521,7 @@ export const en: Dictionary = {
         icon: "🏥",
         title: "Emergency response ready",
         description:
-          "EMT-qualified staff are on site. AED and first-aid equipment are on hand, and we're connected to Gapyeong hospitals for emergencies.",
+          "EMT-qualified staff are on site. First-aid equipment is on hand, and we're connected to Gapyeong hospitals for emergencies.",
       },
       {
         icon: "🌊",
@@ -582,7 +584,7 @@ export const en: Dictionary = {
         id: "bbq",
         question: "What's included in the unlimited BBQ?",
         answer:
-          "Unlimited BBQ includes meat, rice, sausage, kimchi, ssamjang, ssammu, king oyster mushroom, and disposables. Add the BBQ option to any stay package to enjoy it.",
+          "Unlimited BBQ includes meat, rice, sausage, kimchi, ssamjang, ssammu, mushroom, and disposables (subject to change). Add the BBQ option to any stay package to enjoy it.",
       },
       {
         id: "peak-season",

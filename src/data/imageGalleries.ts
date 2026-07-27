@@ -114,9 +114,9 @@ export const galleries = {
     "/images/info/23.png",
     "/images/info/24.png",
     "/images/info/25.png",
-    "/images/info/26.png",
+    "/images/info/26.jpeg",
     "/images/info/27.png",
-    "/images/info/28.jpeg",
+    "/images/info/28.png",
   ]),
   activityDetails: {
     rides: Array.from({ length: 15 }, (_, i) => encodeURI(`/images/놀이기구/상세/${i + 1}.jpeg`)),

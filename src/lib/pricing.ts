@@ -89,6 +89,8 @@ export function summarizeSeason(nights: Date[]): "peak" | "off" | "mixed" {
   return [...set][0];
 }
 
+export const PET_FEE_PER_DOG = 30000;
+
 export const CONFIG_KEYS = [
   "rides3",
   "rides5",

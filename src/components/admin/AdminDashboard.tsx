@@ -1076,7 +1076,7 @@ function ReservationTableRow({
         <td style={tdStyle}>
           <div style={{ fontWeight: 600 }}>{roomTitle}</div>
           <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", marginTop: "1px" }}>
-            {row.guests_count}명
+            {row.guests_count}명{row.pet_count > 0 ? ` · 🐶 반려견 ${row.pet_count}마리` : ""}
           </div>
         </td>
         <td style={{ ...tdStyle, textAlign: "right" }}>

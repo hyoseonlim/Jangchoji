@@ -4,6 +4,7 @@ import { encrypt, decrypt, hashPhone, maskName, maskPhone } from "./encryption";
 import {
   CONFIG_LABELS,
   CONFIG_KEYS,
+  PET_FEE_PER_DOG,
   type ConfigKey,
   type GroupSize,
   type PackageLine,
@@ -39,6 +40,7 @@ export const MAX_GUESTS_PER_RESERVATION = 10;
 export type CreateReservationInput = {
   packageSelections: PackageSelections;
   guestsCount: number;
+  petCount?: number;
   checkIn: string;
   checkOut: string;
   guests: GuestInput[];
@@ -55,6 +57,7 @@ export type AdminReservationInput = {
   packageSelections: PackageSelections;
   roomKey: RoomKey;
   guestsCount: number;
+  petCount?: number;
   checkIn: string;
   checkOut: string;
   guests: GuestInput[]; // 대표자 1명 (이름·전화 필수), 동행은 선택 (이름 필수)
@@ -67,7 +70,10 @@ export type AdminReservationInput = {
 
 export type QuoteResult = {
   total: number;
+  packageTotal: number;
+  petFee: number;
   guestsCount: number;
+  petCount: number;
   lines: PackageLine[];
   season: "peak" | "off" | "mixed";
   packageLabel: string;
@@ -98,9 +104,12 @@ export async function quoteReservation(
   checkIn: string,
   checkOut: string,
   guestsCount: number,
-  opts: { relaxed?: boolean; groupSize?: GroupSize } = {},
+  opts: { relaxed?: boolean; groupSize?: GroupSize; petCount?: number } = {},
 ): Promise<QuoteResult> {
-  const { relaxed = false, groupSize = FIXED_GROUP_SIZE } = opts;
+  const { relaxed = false, groupSize = FIXED_GROUP_SIZE, petCount = 0 } = opts;
+  const safePetCount = Math.max(0, Math.floor(petCount || 0));
+  const petFee = safePetCount * PET_FEE_PER_DOG;
+
   const nights = nightsBetween(checkIn, checkOut);
   if (nights.length === 0) {
     throw new Error("체크아웃은 체크인 다음날 이후여야 합니다.");
@@ -138,12 +147,20 @@ export async function quoteReservation(
     );
   }
 
+  let packageLabel = summarizePackageLines(result.lines);
+  if (safePetCount > 0) {
+    packageLabel += ` + 반려견 ${safePetCount}마리`;
+  }
+
   return {
-    total: result.total,
+    total: result.total + petFee,
+    packageTotal: result.total,
+    petFee,
     guestsCount,
+    petCount: safePetCount,
     lines: result.lines,
     season: summarizeSeason(nights),
-    packageLabel: summarizePackageLines(result.lines),
+    packageLabel,
   };
 }
 
@@ -268,11 +285,14 @@ export async function createReservation(input: CreateReservationInput) {
     );
   }
 
+  const safePetCount = Math.max(0, Math.floor(input.petCount || 0));
+
   const quote = await quoteReservation(
     input.packageSelections,
     input.checkIn,
     input.checkOut,
     input.guestsCount,
+    { petCount: safePetCount },
   );
 
   const capacityOk = await checkCapacity(input.checkIn, input.checkOut, input.guestsCount);
@@ -290,6 +310,7 @@ export async function createReservation(input: CreateReservationInput) {
       package_label: quote.packageLabel,
       season: quote.season,
       guests_count: input.guestsCount,
+      pet_count: safePetCount,
       check_in: input.checkIn,
       check_out: input.checkOut,
       total_price: quote.total,
@@ -402,12 +423,13 @@ export async function adminCreateReservation(
   }
 
   // 수기 등록은 수량 합계 ≠ 인원수 도 허용 (relaxed)
+  const safePetCount = Math.max(0, Math.floor(input.petCount || 0));
   const quote = await quoteReservation(
     input.packageSelections,
     input.checkIn,
     input.checkOut,
     input.guestsCount,
-    { relaxed: true },
+    { relaxed: true, petCount: safePetCount },
   );
 
   const finalPrice =
@@ -426,6 +448,7 @@ export async function adminCreateReservation(
       package_label: quote.packageLabel,
       season: quote.season,
       guests_count: input.guestsCount,
+      pet_count: safePetCount,
       check_in: input.checkIn,
       check_out: input.checkOut,
       total_price: finalPrice,
@@ -471,6 +494,7 @@ type ReservationRow = {
   package_label: string;
   season: string;
   guests_count: number;
+  pet_count?: number;
   check_in: string;
   check_out: string;
   total_price: number;
@@ -518,12 +542,13 @@ export async function updateReservation(
   };
 
   // 재계산 (relaxed : 관리자는 수량-인원 불일치 허용)
+  const safePetCount = Math.max(0, Math.floor(input.petCount || 0));
   const quote = await quoteReservation(
     input.packageSelections,
     input.checkIn,
     input.checkOut,
     input.guestsCount,
-    { relaxed: true },
+    { relaxed: true, petCount: safePetCount },
   );
 
   const finalPrice =
@@ -546,6 +571,7 @@ export async function updateReservation(
   push("checkOut", cur.check_out, input.checkOut);
   push("roomKey", cur.room_key, input.roomKey);
   push("guestsCount", cur.guests_count, input.guestsCount);
+  push("petCount", cur.pet_count ?? 0, safePetCount);
   push("status", cur.status, input.status);
   push("memo", cur.memo ?? "", input.memo ?? "");
   push("season", cur.season, quote.season);
@@ -573,6 +599,7 @@ export async function updateReservation(
       package_label: quote.packageLabel,
       season: quote.season,
       guests_count: input.guestsCount,
+      pet_count: safePetCount,
       check_in: input.checkIn,
       check_out: input.checkOut,
       total_price: finalPrice,
@@ -654,6 +681,7 @@ export type AdminReservationRow = {
   room_key: RoomKey | null;
   season: string;
   guests_count: number;
+  pet_count: number;
   check_in: string;
   check_out: string;
   total_price: number;
@@ -711,7 +739,7 @@ export async function listReservationsForAdmin(opts: {
   let query = supabase
     .from("reservations")
     .select(
-      "id,status,packages,package_label,room_key,season,guests_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
+      "id,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
     )
     .order("created_at", { ascending: false })
     .limit(500);
@@ -748,6 +776,7 @@ export async function listReservationsForAdmin(opts: {
       room_key: isRoomKey(r.room_key) ? r.room_key : null,
       season: r.season,
       guests_count: r.guests_count,
+      pet_count: (r as { pet_count?: number }).pet_count ?? 0,
       check_in: r.check_in,
       check_out: r.check_out,
       total_price: r.total_price,
