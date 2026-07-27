@@ -21,11 +21,8 @@ import {
 import {
   ROOMS,
   ROOM_KEYS,
-  ROOM_TYPE_META,
   isRoomKey,
-  isRoomType,
   type RoomKey,
-  type RoomType,
 } from "./rooms";
 
 export type ReservationStatus = "pending" | "confirmed" | "cancelled";
@@ -35,11 +32,12 @@ export type GuestInput = { name: string; phone?: string; isRepresentative: boole
 // 온라인 스코프 : 4인 이상 숙박 패키지만 예약 가능 (수기 등록은 관리자가 값 자유롭게 지정 가능)
 export const FIXED_GROUP_SIZE: GroupSize = "4";
 export const MIN_GUESTS = 4;
+// 8인실이 물리적으로 수용 가능한 최대 인원 (11인 이상은 단일 예약 불가)
+export const MAX_GUESTS_PER_RESERVATION = 10;
 
-// 고객 예약 : 유형만 선택. 서버가 자동으로 A/B 배정.
+// 고객 예약 : 인원과 패키지만 지정. 방 배정은 관리자가 확정 시 결정.
 export type CreateReservationInput = {
   packageSelections: PackageSelections;
-  roomType: RoomType;
   guestsCount: number;
   checkIn: string;
   checkOut: string;
@@ -183,7 +181,69 @@ function parseStored(v: unknown): StoredPackage[] {
 }
 
 // ========================================
-// 온라인 예약 생성 (기존)
+// 용량 판정 (인원 임계치 기반)
+// ========================================
+// 물리 객실 최대 수용 인원 :
+//   room_4_a/b = 4, room_5_a/b = 6, room_6_a/b = 8, room_8 = 10
+// N인 예약이 물리적으로 어느 방에 들어갈 수 있는지 :
+//   N ≤ 4 → 어느 방이든 (7개)
+//   5 ≤ N ≤ 6 → 5·6·8인실 (5개)
+//   7 ≤ N ≤ 8 → 6·8인실 (3개)
+//   9 ≤ N ≤ 10 → 8인실 (1개)
+// 여러 예약이 동시에 겹칠 때 각 임계치에서 "인원 ≥ 임계치인 예약 수 ≤ 해당 임계치 이상 방 수" 조건을
+// 모두 만족해야 실현 가능. 하나라도 초과하면 오버부킹이므로 신규 예약 거절.
+type CapacityCounts = { total: number; ge5: number; ge7: number; ge9: number };
+
+function bucketCounts(guestCounts: number[]): CapacityCounts {
+  const c: CapacityCounts = { total: 0, ge5: 0, ge7: 0, ge9: 0 };
+  for (const n of guestCounts) {
+    c.total += 1;
+    if (n >= 5) c.ge5 += 1;
+    if (n >= 7) c.ge7 += 1;
+    if (n >= 9) c.ge9 += 1;
+  }
+  return c;
+}
+
+function isFeasible(c: CapacityCounts): boolean {
+  return c.total <= 7 && c.ge5 <= 5 && c.ge7 <= 3 && c.ge9 <= 1;
+}
+
+// 일정과 겹치는 pending/confirmed 예약의 인원 수 배열을 조회.
+// excludeId : 편집·재배정 시 자기 자신을 제외.
+async function fetchOverlappingGuestCounts(
+  checkIn: string,
+  checkOut: string,
+  excludeId?: number,
+): Promise<number[]> {
+  const supabase = getSupabaseAdmin();
+  let q = supabase
+    .from("reservations")
+    .select("id, guests_count")
+    .in("status", ["pending", "confirmed"])
+    .lt("check_in", checkOut)
+    .gt("check_out", checkIn);
+  if (excludeId != null) q = q.neq("id", excludeId);
+  const { data, error } = await q;
+  if (error) throw new Error(`용량 조회 실패: ${error.message}`);
+  return (data ?? []).map((r) => r.guests_count as number);
+}
+
+// 신규(또는 편집) 예약이 일정 내 용량을 초과하지 않는지 판정.
+// 반환 true = 가능, false = 마감.
+export async function checkCapacity(
+  checkIn: string,
+  checkOut: string,
+  guestsCount: number,
+  excludeId?: number,
+): Promise<boolean> {
+  if (guestsCount > MAX_GUESTS_PER_RESERVATION) return false;
+  const existing = await fetchOverlappingGuestCounts(checkIn, checkOut, excludeId);
+  return isFeasible(bucketCounts([...existing, guestsCount]));
+}
+
+// ========================================
+// 온라인 예약 생성 (방 배정은 관리자가 확정 시)
 // ========================================
 export async function createReservation(input: CreateReservationInput) {
   if (!input.paymentConfirmed) {
@@ -199,15 +259,12 @@ export async function createReservation(input: CreateReservationInput) {
   if (!reps[0].phone || reps[0].phone.replace(/\D+/g, "").length < 9) {
     throw new Error("대표 예약자의 전화번호를 입력해주세요.");
   }
-  if (!isRoomType(input.roomType)) throw new Error("객실 유형을 선택해주세요.");
-  const roomType = ROOM_TYPE_META[input.roomType];
-  if (
-    !Number.isInteger(input.guestsCount) ||
-    input.guestsCount < roomType.minGuests ||
-    input.guestsCount > roomType.maxGuests
-  ) {
+  if (!Number.isInteger(input.guestsCount) || input.guestsCount < MIN_GUESTS) {
+    throw new Error(`인원은 ${MIN_GUESTS}명 이상이어야 합니다.`);
+  }
+  if (input.guestsCount > MAX_GUESTS_PER_RESERVATION) {
     throw new Error(
-      `${roomType.title}은 최소 ${roomType.minGuests}인 / 최대 ${roomType.maxGuests}인까지 예약 가능합니다.`,
+      `${MAX_GUESTS_PER_RESERVATION}인을 초과하는 예약은 전화 문의 부탁드립니다.`,
     );
   }
 
@@ -218,13 +275,9 @@ export async function createReservation(input: CreateReservationInput) {
     input.guestsCount,
   );
 
-  // 물리 객실 자동 배정 (A/B 순으로 검사, 첫 가용 방 사용)
-  const avail = await getRoomAvailability(input.checkIn, input.checkOut);
-  const assignedKey = roomType.physicals.find((k) => avail[k]);
-  if (!assignedKey) {
-    throw new Error(
-      `${roomType.title}은 선택하신 일정에 이미 예약 마감입니다. 다른 객실 유형이나 날짜를 선택해주세요.`,
-    );
+  const capacityOk = await checkCapacity(input.checkIn, input.checkOut, input.guestsCount);
+  if (!capacityOk) {
+    throw new Error("선택하신 일정은 예약이 마감되었습니다. 다른 날짜를 선택해주세요.");
   }
 
   const depositorRaw = (input.depositorName ?? "").trim() || reps[0].name.trim();
@@ -243,16 +296,13 @@ export async function createReservation(input: CreateReservationInput) {
       status: "pending",
       memo: input.memo ?? null,
       depositor_name_enc: encrypt(depositorRaw),
-      room_key: assignedKey,
+      room_key: null,
       source: "online",
     })
     .select("*")
     .single();
 
   if (rErr || !reservation) {
-    if (rErr?.message && /exclu|no_double_book|conflicting|overlap/i.test(rErr.message)) {
-      throw new Error("선택하신 일정에 해당 객실이 이미 예약되었습니다. 다른 객실이나 날짜를 선택해주세요.");
-    }
     throw new Error(`예약 생성 실패: ${rErr?.message}`);
   }
 
@@ -267,6 +317,60 @@ export async function createReservation(input: CreateReservationInput) {
   });
 
   return { reservation, quote };
+}
+
+// ========================================
+// 관리자 방 배정 + 확정 (원자적)
+// ========================================
+export async function assignRoomAndConfirm(
+  reservationId: number,
+  roomKey: RoomKey,
+  admin: { username: string; displayName: string },
+) {
+  if (!isRoomKey(roomKey)) throw new Error("객실 키가 올바르지 않습니다.");
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.rpc("assign_room_and_confirm", {
+    p_reservation_id: reservationId,
+    p_room_key: roomKey,
+    p_admin_username: admin.username,
+    p_admin_display_name: admin.displayName,
+  });
+  if (error) {
+    if (/exclu|no_double_book|conflicting|overlap/i.test(error.message)) {
+      throw new Error("선택한 객실이 해당 일정에 이미 다른 예약과 겹칩니다.");
+    }
+    if (/only pending/i.test(error.message)) {
+      throw new Error("대기 상태의 예약만 방 배정이 가능합니다.");
+    }
+    throw new Error(`방 배정 실패: ${error.message}`);
+  }
+}
+
+// ========================================
+// 관리자 호실 스왑 (원자적, RPC)
+// ========================================
+export async function swapReservationRooms(
+  idA: number,
+  idB: number,
+  admin: { username: string; displayName: string },
+) {
+  if (idA === idB) throw new Error("서로 다른 두 예약을 선택해주세요.");
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.rpc("swap_reservation_rooms", {
+    p_id_a: idA,
+    p_id_b: idB,
+    p_admin_username: admin.username,
+    p_admin_display_name: admin.displayName,
+  });
+  if (error) {
+    if (/must be confirmed/i.test(error.message)) {
+      throw new Error("두 예약 모두 확정 상태여야 스왑할 수 있습니다.");
+    }
+    if (/room_key assigned/i.test(error.message)) {
+      throw new Error("두 예약 모두 방이 배정되어 있어야 합니다.");
+    }
+    throw new Error(`호실 스왑 실패: ${error.message}`);
+  }
 }
 
 // ========================================

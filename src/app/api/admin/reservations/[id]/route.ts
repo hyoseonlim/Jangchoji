@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/auth";
-import { transitionReservation, type ReservationStatus } from "@/lib/reservations";
+import {
+  assignRoomAndConfirm,
+  transitionReservation,
+  type ReservationStatus,
+} from "@/lib/reservations";
+import { isRoomKey } from "@/lib/rooms";
 
 export const runtime = "nodejs";
 
@@ -28,12 +33,30 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
   const b = body as Record<string, unknown>;
   const action = b.action;
-  let next: ReservationStatus;
-  if (action === "confirm") next = "confirmed";
-  else if (action === "cancel") next = "cancelled";
-  else return NextResponse.json({ error: "action 은 confirm | cancel 이어야 합니다." }, { status: 400 });
 
   try {
+    if (action === "assign_room") {
+      const roomKey = b.roomKey;
+      if (!isRoomKey(roomKey)) {
+        return NextResponse.json({ error: "roomKey 가 올바르지 않습니다." }, { status: 400 });
+      }
+      await assignRoomAndConfirm(id, roomKey, {
+        username: admin.username,
+        displayName: admin.displayName,
+      });
+      return NextResponse.json({ ok: true });
+    }
+
+    let next: ReservationStatus;
+    if (action === "confirm") next = "confirmed";
+    else if (action === "cancel") next = "cancelled";
+    else {
+      return NextResponse.json(
+        { error: "action 은 confirm | cancel | assign_room 이어야 합니다." },
+        { status: 400 },
+      );
+    }
+
     const updated = await transitionReservation(id, next, admin.username, admin.displayName);
     return NextResponse.json({ ok: true, reservation: updated });
   } catch (err) {

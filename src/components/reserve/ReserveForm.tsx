@@ -16,24 +16,10 @@ import {
   priceRangeByConfig,
   summarizeSeasonFromRange,
 } from "@/lib/pricing";
-import {
-  ROOM_KEYS,
-  ROOM_TYPES,
-  ROOM_TYPE_META,
-  ROOMS,
-  summarizeAvailability,
-  type RoomKey,
-  type RoomType,
-} from "@/lib/rooms";
 import { CopyableAccount } from "../CopyableAccount";
 
 const MIN_GUESTS = 4;
-const MAX_GUESTS = Math.max(...Object.values(ROOMS).map((r) => r.maxGuests));
-
-type RoomAvailability = Record<RoomKey, boolean>;
-const ALL_AVAILABLE: RoomAvailability = Object.fromEntries(
-  ROOM_KEYS.map((k) => [k, true]),
-) as RoomAvailability;
+const MAX_GUESTS = 10;
 
 type Guest = { name: string; phone: string; isRepresentative: boolean };
 
@@ -42,11 +28,17 @@ type DoneSnapshot = {
   checkIn: string;
   checkOut: string;
   nights: number;
-  roomType: RoomType;
   guestsCount: number;
   lines: PackageLine[];
   season: "peak" | "off" | "mixed" | null;
 };
+
+type Availability =
+  | { state: "idle" }
+  | { state: "loading" }
+  | { state: "ok" }
+  | { state: "unavailable"; reason: string }
+  | { state: "error"; message: string };
 
 const numberFmt = new Intl.NumberFormat("ko-KR");
 const won = (n: number) => `₩${numberFmt.format(n)}`;
@@ -67,28 +59,6 @@ function formatDateKo(iso: string): string {
   return `${m}월 ${d}일 (${DAY_KO[dt.getDay()]})`;
 }
 
-type RoomStatus =
-  | { kind: "available"; freeCount: number; total: number }
-  | { kind: "booked" }
-  | { kind: "mismatch"; reason: string };
-
-function roomStatusForType(
-  type: RoomType,
-  guestsCount: number,
-  physicalAvail: RoomAvailability,
-): RoomStatus {
-  const meta = ROOM_TYPE_META[type];
-  if (guestsCount < meta.minGuests) {
-    return { kind: "mismatch", reason: `${meta.minGuests}인부터 예약` };
-  }
-  if (guestsCount > meta.maxGuests) {
-    return { kind: "mismatch", reason: `최대 ${meta.maxGuests}인` };
-  }
-  const freeCount = meta.physicals.filter((k) => physicalAvail[k]).length;
-  if (freeCount === 0) return { kind: "booked" };
-  return { kind: "available", freeCount, total: meta.physicals.length };
-}
-
 const EMPTY_SELECTIONS: PackageSelections = {};
 
 export function ReserveForm({
@@ -105,10 +75,7 @@ export function ReserveForm({
   const [checkIn, setCheckIn] = useState(() => todayISO(7));
   const [checkOut, setCheckOut] = useState(() => todayISO(8));
   const [guestsCount, setGuestsCount] = useState(MIN_GUESTS);
-  const [roomType, setRoomType] = useState<RoomType>("room_4");
-  const [availability, setAvailability] = useState<RoomAvailability>(ALL_AVAILABLE);
-  const [availabilityLoading, setAvailabilityLoading] = useState(false);
-  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<Availability>({ state: "idle" });
   const [selections, setSelections] = useState<PackageSelections>(EMPTY_SELECTIONS);
   const [guests, setGuests] = useState<Guest[]>([
     { name: "", phone: "", isRepresentative: true },
@@ -148,50 +115,41 @@ export function ReserveForm({
     );
   }, [checkIn, checkOut]);
 
-  const selectedRoomMeta = ROOM_TYPE_META[roomType];
-  const selectedStatus = roomStatusForType(roomType, guestsCount, availability);
-  const typeSummary = useMemo(() => summarizeAvailability(availability), [availability]);
-
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
     if (!checkIn || !checkOut || checkOut <= checkIn) {
-      setAvailability(ALL_AVAILABLE);
-      setAvailabilityError(null);
+      setAvailability({ state: "idle" });
       return;
     }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setAvailabilityLoading(true);
-    setAvailabilityError(null);
+    setAvailability({ state: "loading" });
     fetch(
-      `/api/rooms/availability?checkIn=${encodeURIComponent(checkIn)}&checkOut=${encodeURIComponent(checkOut)}`,
+      `/api/rooms/availability?checkIn=${encodeURIComponent(checkIn)}&checkOut=${encodeURIComponent(checkOut)}&guestsCount=${guestsCount}`,
       { signal: controller.signal, cache: "no-store" },
     )
       .then(async (res) => {
         const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? "객실 조회 실패");
-        return json.availability as RoomAvailability;
+        if (!res.ok) throw new Error(json.error ?? "일정 조회 실패");
+        return json as { available: boolean; reason?: string };
       })
-      .then((next) => setAvailability(next))
+      .then((next) => {
+        setAvailability(
+          next.available
+            ? { state: "ok" }
+            : { state: "unavailable", reason: next.reason ?? "선택하신 일정은 예약이 마감되었습니다." },
+        );
+      })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setAvailabilityError(err instanceof Error ? err.message : "객실 조회 실패");
-        setAvailability(ALL_AVAILABLE);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setAvailabilityLoading(false);
+        setAvailability({
+          state: "error",
+          message: err instanceof Error ? err.message : "일정 조회 실패",
+        });
       });
     return () => controller.abort();
-  }, [checkIn, checkOut]);
-
-  useEffect(() => {
-    if (roomStatusForType(roomType, guestsCount, availability).kind === "available") return;
-    const next = ROOM_TYPES.find(
-      (t) => roomStatusForType(t, guestsCount, availability).kind === "available",
-    );
-    if (next) setRoomType(next);
-  }, [guestsCount, availability, roomType]);
+  }, [checkIn, checkOut, guestsCount]);
 
   // 인원 수가 줄어들면 guests 배열 끝에서 잘라내고, 대표자 유지
   useEffect(() => {
@@ -279,8 +237,12 @@ export function ReserveForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
-    if (selectedStatus.kind !== "available") {
-      setSubmitError("선택한 객실이 예약 조건에 맞지 않습니다.");
+    if (availability.state !== "ok") {
+      setSubmitError(
+        availability.state === "unavailable"
+          ? availability.reason
+          : "일정 확인이 필요합니다.",
+      );
       return;
     }
     if (totalQuantity !== guestsCount) {
@@ -302,7 +264,6 @@ export function ReserveForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           packageSelections: selections,
-          roomType,
           guestsCount,
           checkIn,
           checkOut,
@@ -322,7 +283,6 @@ export function ReserveForm({
         checkIn,
         checkOut,
         nights,
-        roomType,
         guestsCount,
         lines: selectionResult?.lines ?? [],
         season,
@@ -348,7 +308,7 @@ export function ReserveForm({
             예약이 접수되었습니다
           </h1>
           <p className="text-black/70 mt-3" style={{ fontSize: "14px", lineHeight: 1.7 }}>
-            현재 <strong className="text-black">확정 대기</strong> 상태입니다. 관리자가 입금 확인 후 대표자 연락처로 안내드릴 예정이니 잠시만 기다려주세요.
+            현재 <strong className="text-black">확정 대기</strong> 상태입니다. 관리자가 입금 확인 후 <strong className="text-black">객실 배정</strong>과 함께 대표자 연락처로 안내드릴 예정이니 잠시만 기다려주세요.
           </p>
 
           <div
@@ -367,8 +327,8 @@ export function ReserveForm({
             </p>
             <dl className="space-y-2" style={{ fontSize: "13px" }}>
               <Row k="일정" v={`${formatDateKo(done.checkIn)} → ${formatDateKo(done.checkOut)} · ${done.nights}박`} />
-              <Row k="객실" v={ROOM_TYPE_META[done.roomType].title} />
               <Row k="인원" v={`${done.guestsCount}명`} />
+              <Row k="객실" v={<span className="text-black/60">관리자 확인 후 배정</span>} />
               <Row
                 k="계절"
                 v={
@@ -455,6 +415,8 @@ export function ReserveForm({
           : "-";
 
   const quantityMatch = totalQuantity === guestsCount;
+  const availabilityBlocked =
+    availability.state === "unavailable" || availability.state === "error";
 
   return (
     <form onSubmit={handleSubmit} className="max-w-3xl mx-auto px-5 md:px-8 py-10 md:py-16">
@@ -481,6 +443,7 @@ export function ReserveForm({
         <ul className="text-black/75 space-y-1">
           <li>• <strong className="text-black">4인 이상 숙박 패키지</strong>만 온라인 예약이 가능합니다.</li>
           <li>• 인원별로 각자 다른 패키지를 선택할 수 있습니다.</li>
+          <li>• <strong className="text-black">객실 배정은 관리자 확정 시</strong> 이루어지며, 대표자 연락처로 안내드립니다.</li>
           <li>• 숙박 없이 액티비티만 이용하실 예정이라면 별도 예약 없이 방문해주세요.</li>
         </ul>
       </div>
@@ -571,87 +534,12 @@ export function ReserveForm({
             최소 {MIN_GUESTS}명 · 최대 {MAX_GUESTS}명
           </span>
         </div>
-      </Section>
-
-      <Section title="3. 객실">
-        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-          <p className="text-black/60" style={{ fontSize: "12px" }}>
-            인원 수와 일정에 맞는 객실만 선택할 수 있습니다.
-          </p>
-          {availabilityLoading && (
-            <span className="text-black/50" style={{ fontSize: "11px", fontWeight: 600 }}>
-              확인 중...
-            </span>
-          )}
-        </div>
-        {availabilityError && (
-          <p className="mb-2" style={{ color: "#e11d48", fontSize: "12px", fontWeight: 600 }}>
-            {availabilityError}
-          </p>
-        )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {ROOM_TYPES.map((type) => {
-            const meta = ROOM_TYPE_META[type];
-            const active = roomType === type;
-            const status = roomStatusForType(type, guestsCount, availability);
-            const enabled = status.kind === "available";
-            const summary = typeSummary[type];
-            return (
-              <button
-                type="button"
-                key={type}
-                onClick={() => enabled && setRoomType(type)}
-                disabled={!enabled}
-                className="text-left px-4 py-3 transition-colors"
-                style={{
-                  backgroundColor: !enabled
-                    ? "rgba(0,0,0,0.03)"
-                    : active
-                      ? "#00C2D1"
-                      : "#fff",
-                  color: !enabled ? "rgba(0,0,0,0.35)" : active ? "#001518" : "#111",
-                  border: active
-                    ? "1px solid #00C2D1"
-                    : enabled
-                      ? "1px solid rgba(0,0,0,0.12)"
-                      : "1px dashed rgba(0,0,0,0.15)",
-                  borderRadius: "2px",
-                  cursor: enabled ? "pointer" : "not-allowed",
-                }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span style={{ fontSize: "14px", fontWeight: 800 }}>{meta.title}</span>
-                  <RoomBadge status={status} active={active} />
-                </div>
-                <div
-                  className="mt-1"
-                  style={{
-                    fontSize: "12px",
-                    color: !enabled
-                      ? "rgba(0,0,0,0.35)"
-                      : active
-                        ? "rgba(0,21,24,0.75)"
-                        : "rgba(0,0,0,0.6)",
-                  }}
-                >
-                  {meta.minGuests === meta.maxGuests
-                    ? `${meta.minGuests}인 전용`
-                    : `${meta.minGuests}~${meta.maxGuests}인`}
-                  {" · "}
-                  {meta.hasLoft ? "다락방 포함" : "다락방 없음"}
-                  {meta.physicals.length > 1 && (
-                    <span style={{ marginLeft: "6px", fontWeight: 700 }}>
-                      · 잔여 {summary.available}/{summary.total}
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+        <div className="mt-3">
+          <AvailabilityBadge availability={availability} />
         </div>
       </Section>
 
-      <Section title="4. 패키지 (인원별 선택)">
+      <Section title="3. 패키지 (인원별 선택)">
         <div
           className="mb-3 flex items-center justify-between p-3"
           style={{
@@ -759,7 +647,7 @@ export function ReserveForm({
         </ul>
       </Section>
 
-      <Section title="5. 예약자">
+      <Section title="4. 예약자">
         <p className="text-black/60 mb-3" style={{ fontSize: "12px" }}>
           대표 예약자만 필수입니다. 동행자 정보는 선택이며 필요할 때만 추가하세요.
         </p>
@@ -846,7 +734,7 @@ export function ReserveForm({
         )}
       </Section>
 
-      <Section title="6. 요청사항 (선택)">
+      <Section title="5. 요청사항 (선택)">
         <textarea
           value={memo}
           onChange={(e) => setMemo(e.target.value)}
@@ -868,7 +756,7 @@ export function ReserveForm({
         <dl className="space-y-2" style={{ fontSize: "13px" }}>
           <Row k="일정" v={`${formatDateKo(checkIn)} → ${formatDateKo(checkOut)} · ${nights}박`} />
           <Row k="인원" v={`${guestsCount}명`} />
-          <Row k="객실" v={selectedRoomMeta.title} />
+          <Row k="객실" v={<span className="text-black/60">관리자 확인 후 배정</span>} />
           <Row k="계절" v={seasonLabel} />
         </dl>
 
@@ -1003,7 +891,7 @@ export function ReserveForm({
             !paymentConfirmed ||
             !quantityMatch ||
             grandTotal <= 0 ||
-            selectedStatus.kind !== "available"
+            availability.state !== "ok"
           }
           className="flex-1 inline-flex items-center justify-center px-6 py-3 font-bold transition-opacity"
           style={{
@@ -1017,7 +905,7 @@ export function ReserveForm({
               !paymentConfirmed ||
               !quantityMatch ||
               grandTotal <= 0 ||
-              selectedStatus.kind !== "available"
+              availability.state !== "ok"
                 ? 0.5
                 : 1,
             cursor:
@@ -1026,17 +914,17 @@ export function ReserveForm({
               !paymentConfirmed ||
               !quantityMatch ||
               grandTotal <= 0 ||
-              selectedStatus.kind !== "available"
+              availability.state !== "ok"
                 ? "not-allowed"
                 : "pointer",
           }}
         >
           {submitting
             ? "처리 중..."
-            : selectedStatus.kind === "booked"
-              ? "선택한 객실 예약 마감"
-              : selectedStatus.kind === "mismatch"
-                ? "인원 수와 맞는 객실 선택 필요"
+            : availabilityBlocked
+              ? "선택한 일정 예약 마감"
+              : availability.state === "loading"
+                ? "일정 확인 중..."
                 : !quantityMatch
                   ? `패키지 ${remainingQuantity > 0 ? `${remainingQuantity}명 더 선택` : `${-remainingQuantity}명 초과`}`
                   : !phoneConfirmed
@@ -1112,31 +1000,29 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-function RoomBadge({ status, active }: { status: RoomStatus; active: boolean }) {
+function AvailabilityBadge({ availability }: { availability: Availability }) {
   const badge = (() => {
-    if (status.kind === "available") {
-      return {
-        text: "예약 가능",
-        bg: active ? "rgba(0,21,24,0.15)" : "rgba(0,194,209,0.15)",
-        fg: active ? "#001518" : "#009aa8",
-      };
-    }
-    if (status.kind === "booked") {
-      return { text: "예약 마감", bg: "rgba(225,29,72,0.12)", fg: "#e11d48" };
-    }
-    return { text: status.reason, bg: "rgba(0,0,0,0.06)", fg: "rgba(0,0,0,0.5)" };
+    if (availability.state === "loading")
+      return { text: "일정 확인 중...", bg: "rgba(0,0,0,0.06)", fg: "rgba(0,0,0,0.55)" };
+    if (availability.state === "ok")
+      return { text: "선택하신 일정 예약 가능", bg: "rgba(0,194,209,0.12)", fg: "#009aa8" };
+    if (availability.state === "unavailable")
+      return { text: availability.reason, bg: "rgba(225,29,72,0.10)", fg: "#c1123d" };
+    if (availability.state === "error")
+      return { text: availability.message, bg: "rgba(255,193,7,0.12)", fg: "#a06500" };
+    return null;
   })();
+  if (!badge) return null;
   return (
     <span
       style={{
-        padding: "2px 6px",
+        display: "inline-block",
+        padding: "6px 10px",
         backgroundColor: badge.bg,
         color: badge.fg,
-        fontSize: "10px",
+        fontSize: "12px",
         fontWeight: 700,
         borderRadius: "2px",
-        letterSpacing: "0.02em",
-        whiteSpace: "nowrap",
       }}
     >
       {badge.text}

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { createReservation } from "@/lib/reservations";
+import {
+  createReservation,
+  MAX_GUESTS_PER_RESERVATION,
+  MIN_GUESTS,
+} from "@/lib/reservations";
 import { isConfigKey, type PackageSelections } from "@/lib/pricing";
-import { isRoomType, ROOM_TYPE_META } from "@/lib/rooms";
 import { notifyAdmin } from "@/lib/discord";
 
 export const runtime = "nodejs";
@@ -41,16 +44,16 @@ export async function POST(req: Request) {
   }
   const totalQuantity = Object.values(selections).reduce((s, n) => s + (n ?? 0), 0);
 
-  if (!isRoomType(b.roomType)) return badRequest("객실 유형을 선택해주세요.");
-  const roomType = ROOM_TYPE_META[b.roomType];
   if (
     typeof b.guestsCount !== "number" ||
     !Number.isInteger(b.guestsCount) ||
-    b.guestsCount < roomType.minGuests ||
-    b.guestsCount > roomType.maxGuests
+    b.guestsCount < MIN_GUESTS
   ) {
+    return badRequest(`인원은 ${MIN_GUESTS}명 이상이어야 합니다.`);
+  }
+  if (b.guestsCount > MAX_GUESTS_PER_RESERVATION) {
     return badRequest(
-      `${roomType.title}은 최소 ${roomType.minGuests}인 / 최대 ${roomType.maxGuests}인까지 예약 가능합니다.`,
+      `${MAX_GUESTS_PER_RESERVATION}인을 초과하는 예약은 전화 문의 부탁드립니다.`,
     );
   }
   if (totalQuantity !== b.guestsCount) {
@@ -91,7 +94,6 @@ export async function POST(req: Request) {
   try {
     const { reservation, quote } = await createReservation({
       packageSelections: selections,
-      roomType: b.roomType,
       guestsCount: b.guestsCount,
       checkIn: b.checkIn,
       checkOut: b.checkOut,

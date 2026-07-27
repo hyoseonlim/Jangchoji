@@ -127,6 +127,8 @@ export function AdminDashboard({
   const [editorTarget, setEditorTarget] = useState<AdminReservationRow | null>(null);
   const [modal, setModal] = useState<AdminModalRequest | null>(null);
   const modalResolveRef = useRef<((ok: boolean) => void) | null>(null);
+  const [assignTarget, setAssignTarget] = useState<AdminReservationRow | null>(null);
+  const [swapOpen, setSwapOpen] = useState(false);
   const [, startTransition] = useTransition();
 
   const today = todayISO();
@@ -267,6 +269,11 @@ export function AdminDashboard({
   }
 
   function askConfirm(row: AdminReservationRow) {
+    // room_key 가 없는 대기 예약(신규 온라인 예약)은 방 배정 다이얼로그로 라우팅
+    if (row.room_key == null) {
+      setAssignTarget(row);
+      return;
+    }
     void transition(row.id, "confirm", {
       title: `예약 확정`,
       message: `${row.package_label}\n${row.guests_count}명 · ${won(row.total_price)}\n\n입금이 확인되어 예약을 확정합니다.`,
@@ -274,6 +281,63 @@ export function AdminDashboard({
       cancelLabel: "닫기",
       variant: "primary",
     });
+  }
+
+  async function handleAssignRoom(row: AdminReservationRow, roomKey: RoomKey) {
+    setBusyId(row.id);
+    try {
+      const res = await fetch(`/api/admin/reservations/${row.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "assign_room", roomKey }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        await showAlert("방 배정 실패", json.error ?? "방 배정 중 오류가 발생했습니다.", "danger");
+        return;
+      }
+      setAssignTarget(null);
+      await refresh();
+      setHistoryByRow((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+      if (expandedIds.has(row.id)) void fetchHistory(row.id);
+    } catch {
+      await showAlert("네트워크 오류", "요청 중 문제가 발생했습니다.", "danger");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleSwap(idA: number, idB: number) {
+    try {
+      const res = await fetch("/api/admin/reservations/swap", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idA, idB }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        await showAlert("스왑 실패", json.error ?? "스왑 중 오류가 발생했습니다.", "danger");
+        return false;
+      }
+      setSwapOpen(false);
+      await refresh();
+      setHistoryByRow((prev) => {
+        const next = { ...prev };
+        delete next[idA];
+        delete next[idB];
+        return next;
+      });
+      if (expandedIds.has(idA)) void fetchHistory(idA);
+      if (expandedIds.has(idB)) void fetchHistory(idB);
+      return true;
+    } catch {
+      await showAlert("네트워크 오류", "요청 중 문제가 발생했습니다.", "danger");
+      return false;
+    }
   }
   function askCancel(row: AdminReservationRow) {
     void transition(row.id, "cancel", {
@@ -491,6 +555,24 @@ export function AdminDashboard({
                 + 수기 등록
               </button>
             )}
+            {canWrite && (
+              <button
+                type="button"
+                onClick={() => setSwapOpen(true)}
+                style={{
+                  padding: "6px 12px",
+                  border: "1px solid rgba(167,139,250,0.55)",
+                  borderRadius: "2px",
+                  backgroundColor: "transparent",
+                  color: "#a78bfa",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                ⇄ 호실 스왑
+              </button>
+            )}
             <button
               type="button"
               onClick={refresh}
@@ -555,6 +637,20 @@ export function AdminDashboard({
         initial={editorTarget}
         onClose={closeEditor}
         onSaved={handleEditorSaved}
+      />
+
+      <AssignRoomDialog
+        target={assignTarget}
+        onClose={() => setAssignTarget(null)}
+        onAssign={handleAssignRoom}
+        busy={busyId != null}
+      />
+
+      <SwapDialog
+        open={swapOpen}
+        onClose={() => setSwapOpen(false)}
+        confirmedRows={rows.filter((r) => r.status === "confirmed" && r.room_key != null)}
+        onSwap={handleSwap}
       />
     </div>
   );
@@ -1141,7 +1237,7 @@ function ExpandedDetail({
             onClick={() => onConfirm(row)}
             style={primaryBtn(busy)}
           >
-            입금 확인 · 확정
+            {row.room_key == null ? "방 배정 및 확정" : "입금 확인 · 확정"}
           </button>
           <button
             type="button"
@@ -1659,5 +1755,386 @@ function HistoryTimeline({ state }: { state: HistoryState }) {
         );
       })}
     </ol>
+  );
+}
+
+// ---------- Assign Room Dialog ----------
+
+function AssignRoomDialog({
+  target,
+  onClose,
+  onAssign,
+  busy,
+}: {
+  target: AdminReservationRow | null;
+  onClose: () => void;
+  onAssign: (row: AdminReservationRow, roomKey: RoomKey) => void;
+  busy: boolean;
+}) {
+  const [availability, setAvailability] = useState<Record<RoomKey, boolean> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pickedKey, setPickedKey] = useState<RoomKey | null>(null);
+
+  useMemo(() => {
+    if (!target) {
+      setAvailability(null);
+      setPickedKey(null);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setPickedKey(null);
+    fetch(
+      `/api/admin/rooms/availability?checkIn=${encodeURIComponent(target.check_in)}&checkOut=${encodeURIComponent(target.check_out)}`,
+      { cache: "no-store" },
+    )
+      .then(async (res) => {
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error ?? "객실 조회 실패");
+        return j.availability as Record<RoomKey, boolean>;
+      })
+      .then((a) => setAvailability(a))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "객실 조회 실패"))
+      .finally(() => setLoading(false));
+  }, [target]);
+
+  if (!target) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 60,
+        padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: "480px",
+          backgroundColor: "#14171c",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: "6px",
+          padding: "20px",
+          color: "#e6e8ec",
+        }}
+      >
+        <p style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.12em", color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>
+          방 배정 및 확정
+        </p>
+        <h2 style={{ fontSize: "18px", fontWeight: 800, marginTop: "4px", letterSpacing: "-0.01em" }}>
+          #{target.id} · {target.representative?.name ?? "-"} · {target.guests_count}명
+        </h2>
+        <p style={{ marginTop: "6px", fontSize: "12px", color: "rgba(255,255,255,0.65)" }}>
+          {target.check_in} ~ {target.check_out} · {target.package_label}
+        </p>
+
+        <div style={{ marginTop: "16px" }}>
+          <p style={{ fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.55)", marginBottom: "8px" }}>
+            해당 일정에 사용 가능한 객실 (인원 대비 용량 미달 방은 비활성화)
+          </p>
+          {loading && (
+            <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>불러오는 중…</p>
+          )}
+          {error && (
+            <p style={{ fontSize: "12px", color: "#ff6b7a" }}>{error}</p>
+          )}
+          {availability && (
+            <ul style={{ listStyle: "none", padding: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+              {ROOM_KEYS.map((k) => {
+                const info = ROOMS[k];
+                const free = availability[k];
+                const fits = info.maxGuests >= target.guests_count;
+                const enabled = free && fits;
+                const picked = pickedKey === k;
+                return (
+                  <li key={k}>
+                    <button
+                      type="button"
+                      disabled={!enabled || busy}
+                      onClick={() => setPickedKey(k)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        borderRadius: "3px",
+                        border: picked
+                          ? "1px solid #00C2D1"
+                          : enabled
+                            ? "1px solid rgba(255,255,255,0.15)"
+                            : "1px dashed rgba(255,255,255,0.1)",
+                        backgroundColor: picked
+                          ? "rgba(0,194,209,0.14)"
+                          : enabled
+                            ? "rgba(255,255,255,0.03)"
+                            : "rgba(255,255,255,0.02)",
+                        color: enabled ? "#e6e8ec" : "rgba(255,255,255,0.35)",
+                        cursor: enabled ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      <div style={{ fontSize: "13px", fontWeight: 800 }}>{info.title}</div>
+                      <div style={{ fontSize: "11px", marginTop: "2px", color: enabled ? "rgba(255,255,255,0.6)" : "inherit" }}>
+                        최대 {info.maxGuests}인
+                        {!fits && " · 인원 초과"}
+                        {fits && !free && " · 이미 배정됨"}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div style={{ marginTop: "20px", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            style={{
+              padding: "8px 16px",
+              border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: "2px",
+              backgroundColor: "transparent",
+              color: "rgba(255,255,255,0.75)",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: busy ? "wait" : "pointer",
+            }}
+          >
+            닫기
+          </button>
+          <button
+            type="button"
+            disabled={!pickedKey || busy}
+            onClick={() => pickedKey && onAssign(target, pickedKey)}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "2px",
+              border: "none",
+              backgroundColor: "#00C2D1",
+              color: "#001518",
+              fontSize: "13px",
+              fontWeight: 800,
+              cursor: !pickedKey || busy ? "not-allowed" : "pointer",
+              opacity: !pickedKey || busy ? 0.5 : 1,
+            }}
+          >
+            {busy ? "처리 중…" : "배정 및 확정"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Swap Dialog ----------
+
+function SwapDialog({
+  open,
+  onClose,
+  confirmedRows,
+  onSwap,
+}: {
+  open: boolean;
+  onClose: () => void;
+  confirmedRows: AdminReservationRow[];
+  onSwap: (idA: number, idB: number) => Promise<boolean>;
+}) {
+  const [idA, setIdA] = useState<number | null>(null);
+  const [idB, setIdB] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (!open) return null;
+
+  const rowA = confirmedRows.find((r) => r.id === idA) ?? null;
+  const rowB = confirmedRows.find((r) => r.id === idB) ?? null;
+
+  const dateMatched = rowA && rowB ? rowA.check_in === rowB.check_in && rowA.check_out === rowB.check_out : true;
+  const capacityMatched = (() => {
+    if (!rowA || !rowB || !rowA.room_key || !rowB.room_key) return true;
+    const aCanTakeB = ROOMS[rowB.room_key].maxGuests >= rowA.guests_count;
+    const bCanTakeA = ROOMS[rowA.room_key].maxGuests >= rowB.guests_count;
+    return aCanTakeB && bCanTakeA;
+  })();
+
+  const canSwap = (() => {
+    if (!rowA || !rowB || rowA.id === rowB.id) return false;
+    if (!rowA.room_key || !rowB.room_key) return false;
+    return dateMatched && capacityMatched;
+  })();
+
+  const swapReason = (() => {
+    if (!rowA || !rowB) return null;
+    if (!dateMatched) return "선택한 두 예약은 숙박 일정(체크인·체크아웃 날짜)이 동일해야 호실을 스왑할 수 있습니다.";
+    if (!capacityMatched) return "선택한 두 예약은 인원 대비 방 수용 인원이 맞지 않아 스왑할 수 없습니다.";
+    return null;
+  })();
+
+  const sorted = [...confirmedRows].sort((a, b) => a.check_in.localeCompare(b.check_in));
+
+  async function execute() {
+    if (!rowA || !rowB || !canSwap) return;
+    setBusy(true);
+    try {
+      const ok = await onSwap(rowA.id, rowB.id);
+      if (ok) {
+        setIdA(null);
+        setIdB(null);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 60,
+        padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: "560px",
+          backgroundColor: "#14171c",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: "6px",
+          padding: "20px",
+          color: "#e6e8ec",
+        }}
+      >
+        <p style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.12em", color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>
+          호실 스왑
+        </p>
+        <h2 style={{ fontSize: "18px", fontWeight: 800, marginTop: "4px", letterSpacing: "-0.01em" }}>
+          두 확정 예약의 호실을 교체합니다
+        </h2>
+        <p style={{ marginTop: "6px", fontSize: "12px", color: "rgba(255,255,255,0.65)" }}>
+          동일한 일정(체크인·체크아웃)에 방이 배정된 확정 예약끼리만 스왑이 가능합니다.
+        </p>
+
+        {confirmedRows.length < 2 ? (
+          <p style={{ marginTop: "16px", fontSize: "13px", color: "rgba(255,255,255,0.55)" }}>
+            스왑 가능한 확정 예약이 2건 이상 없습니다.
+          </p>
+        ) : (
+          <div style={{ marginTop: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <SwapPicker label="예약 A" value={idA} onChange={setIdA} rows={sorted} excludeId={idB} />
+            <SwapPicker label="예약 B" value={idB} onChange={setIdB} rows={sorted} excludeId={idA} />
+          </div>
+        )}
+
+        {swapReason && (
+          <p style={{ marginTop: "12px", fontSize: "12px", color: "#ff6b7a", lineHeight: 1.5 }}>
+            {swapReason}
+          </p>
+        )}
+
+        <div style={{ marginTop: "20px", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            style={{
+              padding: "8px 16px",
+              border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: "2px",
+              backgroundColor: "transparent",
+              color: "rgba(255,255,255,0.75)",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: busy ? "wait" : "pointer",
+            }}
+          >
+            닫기
+          </button>
+          <button
+            type="button"
+            disabled={!canSwap || busy}
+            onClick={execute}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "2px",
+              border: "none",
+              backgroundColor: "#a78bfa",
+              color: "#12082e",
+              fontSize: "13px",
+              fontWeight: 800,
+              cursor: !canSwap || busy ? "not-allowed" : "pointer",
+              opacity: !canSwap || busy ? 0.5 : 1,
+            }}
+          >
+            {busy ? "처리 중…" : "스왑 실행"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SwapPicker({
+  label,
+  value,
+  onChange,
+  rows,
+  excludeId,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (v: number | null) => void;
+  rows: AdminReservationRow[];
+  excludeId: number | null;
+}) {
+  return (
+    <label style={{ display: "block" }}>
+      <span style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.55)", marginBottom: "6px" }}>
+        {label}
+      </span>
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+        style={{
+          width: "100%",
+          padding: "8px 10px",
+          backgroundColor: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.15)",
+          borderRadius: "2px",
+          color: "#e6e8ec",
+          fontSize: "13px",
+        }}
+      >
+        <option value="">선택하세요</option>
+        {rows
+          .filter((r) => r.id !== excludeId)
+          .map((r) => (
+            <option key={r.id} value={r.id}>
+              #{r.id} · {r.room_key ? ROOMS[r.room_key].shortTitle : "?"} · {r.check_in}~{r.check_out} · {r.representative?.name ?? "-"} ({r.guests_count}명)
+            </option>
+          ))}
+      </select>
+    </label>
   );
 }

@@ -177,6 +177,124 @@ END;
 $$;
 
 ------------------------------------------------------------
+-- RPC: 두 예약의 room_key 원자적 스왑
+--   A=room_X, B=room_Y 상태에서 A→room_Y, B→room_X 로 교체.
+--   EXCLUDE 제약이 있어 순차 UPDATE 로는 중간에 걸리므로 :
+--     1) 두 예약 모두 room_key = NULL 로 임시 해제 (WHERE 조건 벗어남)
+--     2) 각각 상대 room_key 로 재할당
+--     3) 두 건 모두 이력에 action='room_swapped' 기록
+--   두 예약 모두 status = 'confirmed' 여야 하며 그 외는 거절.
+------------------------------------------------------------
+CREATE OR REPLACE FUNCTION swap_reservation_rooms(
+  p_id_a               INTEGER,
+  p_id_b               INTEGER,
+  p_admin_username     TEXT,
+  p_admin_display_name TEXT
+) RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_status_a    reservation_status;
+  v_status_b    reservation_status;
+  v_room_a      TEXT;
+  v_room_b      TEXT;
+  v_check_in_a  DATE;
+  v_check_in_b  DATE;
+  v_check_out_a DATE;
+  v_check_out_b DATE;
+BEGIN
+  IF p_id_a = p_id_b THEN
+    RAISE EXCEPTION 'swap requires two distinct reservations';
+  END IF;
+
+  -- 동시 스왑 방지 : 두 행을 잠금
+  SELECT status, room_key, check_in, check_out INTO v_status_a, v_room_a, v_check_in_a, v_check_out_a
+    FROM reservations WHERE id = p_id_a FOR UPDATE;
+  IF v_status_a IS NULL THEN
+    RAISE EXCEPTION 'reservation not found: %', p_id_a;
+  END IF;
+  SELECT status, room_key, check_in, check_out INTO v_status_b, v_room_b, v_check_in_b, v_check_out_b
+    FROM reservations WHERE id = p_id_b FOR UPDATE;
+  IF v_status_b IS NULL THEN
+    RAISE EXCEPTION 'reservation not found: %', p_id_b;
+  END IF;
+
+  IF v_check_in_a <> v_check_in_b OR v_check_out_a <> v_check_out_b THEN
+    RAISE EXCEPTION 'both reservations must have identical check-in and check-out dates to swap';
+  END IF;
+
+  IF v_status_a <> 'confirmed' OR v_status_b <> 'confirmed' THEN
+    RAISE EXCEPTION 'both reservations must be confirmed to swap';
+  END IF;
+  IF v_room_a IS NULL OR v_room_b IS NULL THEN
+    RAISE EXCEPTION 'both reservations must have room_key assigned';
+  END IF;
+
+  -- 1) 임시 해제 : EXCLUDE 조건(WHERE room_key IS NOT NULL)에서 벗어남
+  UPDATE reservations SET room_key = NULL, updated_at = now() WHERE id IN (p_id_a, p_id_b);
+
+  -- 2) 재할당 : A ← 원래 B의 room, B ← 원래 A의 room
+  UPDATE reservations SET room_key = v_room_b, updated_at = now() WHERE id = p_id_a;
+  UPDATE reservations SET room_key = v_room_a, updated_at = now() WHERE id = p_id_b;
+
+  -- 3) 이력 기록
+  INSERT INTO reservation_history
+    (reservation_id, admin_username, admin_display_name, action, before_status, after_status, changes)
+  VALUES
+    (p_id_a, p_admin_username, p_admin_display_name, 'room_swapped', 'confirmed', 'confirmed',
+     jsonb_build_array(jsonb_build_object('field','roomKey','before',v_room_a,'after',v_room_b,'swappedWith',p_id_b))),
+    (p_id_b, p_admin_username, p_admin_display_name, 'room_swapped', 'confirmed', 'confirmed',
+     jsonb_build_array(jsonb_build_object('field','roomKey','before',v_room_b,'after',v_room_a,'swappedWith',p_id_a)));
+END;
+$$;
+
+------------------------------------------------------------
+-- RPC: 방 배정 + 확정 원자적 처리
+--   pending 상태 + room_key IS NULL 인 예약에 대해 :
+--     1) room_key 지정
+--     2) status → 'confirmed'
+--     3) 이력 기록 (action='room_assigned')
+--   EXCLUDE 제약으로 이미 점유된 방이면 예외 발생.
+------------------------------------------------------------
+CREATE OR REPLACE FUNCTION assign_room_and_confirm(
+  p_reservation_id     INTEGER,
+  p_room_key           TEXT,
+  p_admin_username     TEXT,
+  p_admin_display_name TEXT
+) RETURNS reservations
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_before reservation_status;
+  v_after  reservations;
+BEGIN
+  SELECT status INTO v_before FROM reservations WHERE id = p_reservation_id FOR UPDATE;
+  IF v_before IS NULL THEN
+    RAISE EXCEPTION 'reservation not found: %', p_reservation_id;
+  END IF;
+  IF v_before <> 'pending' THEN
+    RAISE EXCEPTION 'only pending reservations can be assigned a room (current: %)', v_before;
+  END IF;
+
+  UPDATE reservations
+     SET room_key = p_room_key,
+         status = 'confirmed',
+         updated_at = now()
+   WHERE id = p_reservation_id
+   RETURNING * INTO v_after;
+
+  INSERT INTO reservation_history
+    (reservation_id, admin_username, admin_display_name, action, before_status, after_status, changes)
+  VALUES
+    (p_reservation_id, p_admin_username, p_admin_display_name, 'room_assigned',
+     v_before, 'confirmed',
+     jsonb_build_array(jsonb_build_object('field','roomKey','before',NULL,'after',p_room_key)));
+
+  RETURN v_after;
+END;
+$$;
+
+------------------------------------------------------------
 -- Row Level Security
 --   service_role 로만 접근하므로 RLS 를 활성화하고 정책은 두지 않음 (anon/authenticated 차단).
 --   service_role 은 RLS 를 우회하므로 서버 API 는 정상 동작.
