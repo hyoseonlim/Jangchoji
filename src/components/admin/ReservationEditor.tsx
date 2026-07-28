@@ -95,7 +95,7 @@ export function ReservationEditor({
   const [guests, setGuests] = useState<Guest[]>(initialGuests);
   const [memo, setMemo] = useState(() => initial?.memo ?? "");
   const [status, setStatus] = useState<EditorStatus>(() =>
-    initial?.status === "confirmed" ? "confirmed" : "pending",
+    initial ? (initial.status === "confirmed" ? "confirmed" : "pending") : "confirmed",
   );
   const [depositorName, setDepositorName] = useState(() => initial?.depositor_name ?? "");
   const [depositorEdited, setDepositorEdited] = useState(() => Boolean(initial?.depositor_name));
@@ -144,7 +144,7 @@ export function ReservationEditor({
       setSelections({});
       setGuests([{ name: "", phone: "", isRepresentative: true }]);
       setMemo("");
-      setStatus("pending");
+      setStatus("confirmed");
       setDepositorName("");
       setDepositorEdited(false);
       setPriceOverrideOn(false);
@@ -307,7 +307,7 @@ export function ReservationEditor({
         guests,
         memo: memo.trim() || undefined,
         depositorName: depositorName.trim() || undefined,
-        status,
+        status: isEdit ? status : "confirmed",
         priceOverride: priceOverrideOn ? priceOverrideNum : undefined,
         priceNote: priceOverrideOn ? priceNote.trim() : undefined,
       };
@@ -327,7 +327,7 @@ export function ReservationEditor({
       const savedId: number = isEdit ? initial!.id : Number(json.id);
       await onSaved({
         id: savedId,
-        status,
+        status: isEdit ? status : "confirmed",
         checkIn,
         checkOut,
       });
@@ -677,28 +677,49 @@ export function ReservationEditor({
 
             {/* 상태 */}
             <Field label="상태">
-              <div className="inline-flex gap-1" style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: "3px", padding: "2px", backgroundColor: "rgba(0,0,0,0.2)" }}>
-                {(["pending", "confirmed"] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setStatus(s)}
+              {isEdit ? (
+                <>
+                  <div className="inline-flex gap-1" style={{ border: "1px solid rgba(255,255,255,0.1)", borderRadius: "3px", padding: "2px", backgroundColor: "rgba(0,0,0,0.2)" }}>
+                    {(["pending", "confirmed"] as const).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setStatus(s)}
+                        style={{
+                          padding: "5px 12px",
+                          backgroundColor: status === s ? "#fff" : "transparent",
+                          color: status === s ? "#0b0d10" : "rgba(255,255,255,0.65)",
+                          border: "none",
+                          borderRadius: "2px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {s === "pending" ? "확정 대기" : "확정"}
+                      </button>
+                    ))}
+                  </div>
+                  <SubHint>취소는 저장 후 상세 화면의 취소 버튼으로 처리합니다.</SubHint>
+                </>
+              ) : (
+                <>
+                  <span
                     style={{
+                      display: "inline-flex",
                       padding: "5px 12px",
-                      backgroundColor: status === s ? "#fff" : "transparent",
-                      color: status === s ? "#0b0d10" : "rgba(255,255,255,0.65)",
-                      border: "none",
+                      backgroundColor: "#fff",
+                      color: "#0b0d10",
                       borderRadius: "2px",
                       fontSize: "12px",
-                      fontWeight: 700,
-                      cursor: "pointer",
+                      fontWeight: 800,
                     }}
                   >
-                    {s === "pending" ? "확정 대기" : "확정"}
-                  </button>
-                ))}
-              </div>
-              <SubHint>취소는 저장 후 상세 화면의 취소 버튼으로 처리합니다.</SubHint>
+                    확정
+                  </span>
+                  <SubHint>수기 등록은 저장 즉시 확정됩니다. 숙박 수기 등록은 호실 선택이 필수입니다.</SubHint>
+                </>
+              )}
             </Field>
 
             {/* 금액 */}

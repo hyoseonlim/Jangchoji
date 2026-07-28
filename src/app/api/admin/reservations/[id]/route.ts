@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/auth";
 import {
   assignRoomAndConfirm,
+  moveReservationRoom,
   transitionReservation,
   type ReservationStatus,
 } from "@/lib/reservations";
@@ -47,12 +48,24 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ ok: true });
     }
 
+    if (action === "move_room") {
+      const roomKey = b.roomKey;
+      if (!isRoomKey(roomKey)) {
+        return NextResponse.json({ error: "roomKey 가 올바르지 않습니다." }, { status: 400 });
+      }
+      const result = await moveReservationRoom(id, roomKey, {
+        username: admin.username,
+        displayName: admin.displayName,
+      });
+      return NextResponse.json({ ok: true, result });
+    }
+
     let next: ReservationStatus;
     if (action === "confirm") next = "confirmed";
     else if (action === "cancel") next = "cancelled";
     else {
       return NextResponse.json(
-        { error: "action 은 confirm | cancel | assign_room 이어야 합니다." },
+        { error: "action 은 confirm | cancel | assign_room | move_room 이어야 합니다." },
         { status: 400 },
       );
     }

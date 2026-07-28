@@ -48,7 +48,7 @@ export async function POST(req: Request) {
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   try {
-    const { reservation } = await adminCreateReservation(parsed.input, {
+    const { reservation } = await adminCreateReservation({ ...parsed.input, status: "confirmed" }, {
       username: admin.username,
       displayName: admin.displayName,
     });

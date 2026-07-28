@@ -540,6 +540,91 @@ export async function swapReservationRooms(
   }
 }
 
+export async function moveReservationRoom(
+  reservationId: number,
+  targetRoomKey: RoomKey,
+  admin: { username: string; displayName: string },
+) {
+  if (!isRoomKey(targetRoomKey)) throw new Error("호실 키가 올바르지 않습니다.");
+  const supabase = getSupabaseAdmin();
+
+  const { data: current, error: currentErr } = await supabase
+    .from("reservations")
+    .select("id,reservation_type,status,room_key,check_in,check_out,guests_count")
+    .eq("id", reservationId)
+    .single();
+  if (currentErr || !current) throw new Error("예약을 찾을 수 없습니다.");
+  if (current.reservation_type !== "stay") throw new Error("숙박 예약만 호실을 변경할 수 있습니다.");
+  if (current.status !== "confirmed") throw new Error("확정된 숙박 예약만 호실을 변경할 수 있습니다.");
+  if (!isRoomKey(current.room_key)) throw new Error("현재 호실이 배정된 예약만 변경할 수 있습니다.");
+  if (current.room_key === targetRoomKey) return { mode: "unchanged" as const };
+  if (ROOMS[targetRoomKey].maxGuests < current.guests_count) {
+    throw new Error(`${ROOMS[targetRoomKey].title}은 ${current.guests_count}명을 수용할 수 없습니다.`);
+  }
+
+  const { data: overlaps, error: overlapErr } = await supabase
+    .from("reservations")
+    .select("id,status,room_key,check_in,check_out,guests_count,reservation_type")
+    .neq("id", reservationId)
+    .eq("room_key", targetRoomKey)
+    .in("status", ["pending", "confirmed"])
+    .lt("check_in", current.check_out)
+    .gt("check_out", current.check_in);
+  if (overlapErr) throw new Error(`호실 조회 실패: ${overlapErr.message}`);
+
+  const occupied = (overlaps ?? [])[0];
+  if (occupied) {
+    if (
+      overlaps &&
+      overlaps.length === 1 &&
+      occupied.status === "confirmed" &&
+      occupied.reservation_type === "stay" &&
+      occupied.check_in === current.check_in &&
+      occupied.check_out === current.check_out &&
+      isRoomKey(occupied.room_key)
+    ) {
+      if (ROOMS[current.room_key].maxGuests < occupied.guests_count) {
+        throw new Error(`${ROOMS[current.room_key].title}은 교체 대상 예약 인원을 수용할 수 없습니다.`);
+      }
+      await swapReservationRooms(reservationId, occupied.id, admin);
+      return { mode: "swapped" as const, swappedWithId: occupied.id };
+    }
+    throw new Error("해당 호실은 같은 일자별 안에서 교체 가능한 예약이 아니거나 일정이 겹칩니다.");
+  }
+
+  const { error: updateErr } = await supabase
+    .from("reservations")
+    .update({
+      room_key: targetRoomKey,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", reservationId);
+  if (updateErr) {
+    if (/exclu|no_double_book|conflicting|overlap/i.test(updateErr.message)) {
+      throw new Error("선택한 호실이 해당 일정에 이미 다른 예약과 겹칩니다.");
+    }
+    throw new Error(`호실 변경 실패: ${updateErr.message}`);
+  }
+
+  await supabase.from("reservation_history").insert({
+    reservation_id: reservationId,
+    admin_username: admin.username,
+    admin_display_name: admin.displayName,
+    action: "room_moved",
+    before_status: "confirmed",
+    after_status: "confirmed",
+    changes: [
+      {
+        field: "roomKey",
+        before: current.room_key,
+        after: targetRoomKey,
+      },
+    ],
+  });
+
+  return { mode: "moved" as const };
+}
+
 // ========================================
 // 관리자 수기 등록
 // ========================================

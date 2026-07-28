@@ -110,22 +110,13 @@ export function AdminDashboard({
   const [busyId, setBusyId] = useState<number | null>(null);
   const [historyByRow, setHistoryByRow] = useState<Record<number, HistoryState>>({});
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
-  function toggleDateExpanded(date: string) {
-    setExpandedDates((prev) => {
-      const next = new Set(prev);
-      if (next.has(date)) next.delete(date);
-      else next.add(date);
-      return next;
-    });
-  }
   const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
   const [editorTarget, setEditorTarget] = useState<AdminReservationRow | null>(null);
   const [modal, setModal] = useState<AdminModalRequest | null>(null);
   const modalResolveRef = useRef<((ok: boolean) => void) | null>(null);
   const [detailTarget, setDetailTarget] = useState<AdminReservationRow | null>(null);
   const [assignTarget, setAssignTarget] = useState<AdminReservationRow | null>(null);
-  const [swapOpen, setSwapOpen] = useState(false);
+  const [roomMoveTarget, setRoomMoveTarget] = useState<AdminReservationRow | null>(null);
   const [, startTransition] = useTransition();
 
   const today = todayISO();
@@ -312,32 +303,55 @@ export function AdminDashboard({
     }
   }
 
-  async function handleSwap(idA: number, idB: number) {
+  async function handleMoveRoom(row: AdminReservationRow, roomKey: RoomKey) {
+    const occupant = rows.find(
+      (r) =>
+        r.id !== row.id &&
+        r.status === "confirmed" &&
+        r.reservation_type === "stay" &&
+        r.room_key === roomKey &&
+        r.check_in === row.check_in &&
+        r.check_out === row.check_out,
+    );
+    if (occupant) {
+      const ok = await openModal({
+        title: "호실 교체",
+        message:
+          `${ROOMS[roomKey].title}에는 이미 ${occupant.representative?.name ?? "-"} 예약이 배정되어 있습니다.\n\n` +
+          `${row.representative?.name ?? "-"} 예약과 호실을 서로 바꿀까요?`,
+        confirmLabel: "바꾸기",
+        cancelLabel: "닫기",
+        variant: "primary",
+      });
+      if (!ok) return false;
+    }
+    setBusyId(row.id);
     try {
-      const res = await fetch("/api/admin/reservations/swap", {
-        method: "POST",
+      const res = await fetch(`/api/admin/reservations/${row.id}`, {
+        method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idA, idB }),
+        body: JSON.stringify({ action: "move_room", roomKey }),
       });
       const json = await res.json();
       if (!res.ok) {
-        await showAlert("스왑 실패", json.error ?? "스왑 중 오류가 발생했습니다.", "danger");
+        await showAlert("호실 변경 실패", json.error ?? "호실 변경 중 오류가 발생했습니다.", "danger");
         return false;
       }
-      setSwapOpen(false);
+      setRoomMoveTarget(null);
+      setDetailTarget(null);
       await refresh();
       setHistoryByRow((prev) => {
         const next = { ...prev };
-        delete next[idA];
-        delete next[idB];
+        delete next[row.id];
+        if (occupant) delete next[occupant.id];
         return next;
       });
-      if (expandedIds.has(idA)) void fetchHistory(idA);
-      if (expandedIds.has(idB)) void fetchHistory(idB);
       return true;
     } catch {
       await showAlert("네트워크 오류", "요청 중 문제가 발생했습니다.", "danger");
       return false;
+    } finally {
+      setBusyId(null);
     }
   }
   function askCancel(row: AdminReservationRow) {
@@ -553,24 +567,6 @@ export function AdminDashboard({
                 + 수기 등록
               </button>
             )}
-            {canWrite && (
-              <button
-                type="button"
-                onClick={() => setSwapOpen(true)}
-                style={{
-                  padding: "6px 12px",
-                  border: "1px solid rgba(167,139,250,0.55)",
-                  borderRadius: "2px",
-                  backgroundColor: "transparent",
-                  color: "#a78bfa",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                ⇄ 호실 스왑
-              </button>
-            )}
             <button
               type="button"
               onClick={refresh}
@@ -603,8 +599,6 @@ export function AdminDashboard({
         <ByDateGridView
           filtered={filtered}
           today={today}
-          expandedDates={expandedDates}
-          onToggleDate={toggleDateExpanded}
           tableProps={tableProps}
         />
       )}
@@ -633,6 +627,10 @@ export function AdminDashboard({
           setDetailTarget(null);
           openEdit(row);
         }}
+        onMoveRoom={(row) => {
+          setDetailTarget(null);
+          setRoomMoveTarget(row);
+        }}
       />
 
       <ReservationEditor
@@ -651,11 +649,12 @@ export function AdminDashboard({
         busy={busyId != null}
       />
 
-      <SwapDialog
-        open={swapOpen}
-        onClose={() => setSwapOpen(false)}
-        confirmedRows={rows.filter((r) => r.status === "confirmed" && r.room_key != null)}
-        onSwap={handleSwap}
+      <RoomMoveDialog
+        target={roomMoveTarget}
+        rows={rows}
+        busy={roomMoveTarget ? busyId === roomMoveTarget.id : false}
+        onClose={() => setRoomMoveTarget(null)}
+        onMove={handleMoveRoom}
       />
     </div>
   );
@@ -668,14 +667,10 @@ type ByDateEntry = readonly [string, AdminReservationRow[]];
 function ByDateGridView({
   filtered,
   today,
-  expandedDates,
-  onToggleDate,
   tableProps,
 }: {
   filtered: AdminReservationRow[];
   today: string;
-  expandedDates: Set<string>;
-  onToggleDate: (date: string) => void;
   tableProps: TableProps;
 }) {
   const [showPastDates, setShowPastDates] = useState(false);
@@ -729,7 +724,6 @@ function ByDateGridView({
         <EmptyState />
       ) : visibleEntries.map(([date, list]) => {
         const isToday = date === today;
-        const isExpanded = expandedDates.has(date);
         const totalGuests = list.reduce((s, r) => s + r.guests_count, 0);
         const stayCount = list.filter((r) => r.reservation_type === "stay").length;
         const dayUseCount = list.filter((r) => r.reservation_type === "day_use").length;
@@ -752,15 +746,10 @@ function ByDateGridView({
               overflow: "hidden",
             }}
           >
-            <button
-              type="button"
-              onClick={() => onToggleDate(date)}
-              className="w-full text-left"
+            <div
               style={{
                 padding: "10px 12px",
                 background: "transparent",
-                border: "none",
-                cursor: "pointer",
                 color: "inherit",
               }}
             >
@@ -799,17 +788,6 @@ function ByDateGridView({
                     )}
                   </p>
                 </div>
-                <span
-                  aria-hidden="true"
-                  style={{
-                    fontSize: "10px",
-                    color: "rgba(255,255,255,0.4)",
-                    transition: "transform 150ms",
-                    transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                  }}
-                >
-                  ▾
-                </span>
               </div>
 
               {/* 7-cell grid */}
@@ -826,17 +804,67 @@ function ByDateGridView({
                       primary={room.shortTitle}
                       secondary={room.typeTitle}
                       reservation={occupied ?? null}
+                      onOpen={tableProps.onOpenDetail}
                     />
                   );
                 })}
               </div>
               <div className="mt-2 md:hidden space-y-1.5">
                 <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)" }}>
-                  {list.slice(0, 3).map((r) => r.representative?.name ?? `#${r.id}`).join(", ")}
-                  {list.length > 3 ? ` 외 ${list.length - 3}건` : ""}
+                  호실 현황과 당일이용 현황을 아래에서 확인하세요.
                 </div>
               </div>
-            </button>
+            </div>
+
+            <div
+              className="md:hidden grid gap-1.5"
+              style={{
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                padding: "0 12px 10px",
+              }}
+            >
+              {ROOM_KEYS.map((rk) => {
+                const room = ROOMS[rk];
+                const occupied = cellByRoom.get(rk) ?? null;
+                const c = occupied ? STATUS_COLOR[occupied.status] : null;
+                return (
+                  <button
+                    key={rk}
+                    type="button"
+                    disabled={!occupied}
+                    onClick={() => occupied && tableProps.onOpenDetail(occupied)}
+                    style={{
+                      minHeight: "48px",
+                      padding: "7px 8px",
+                      textAlign: "left",
+                      backgroundColor: occupied ? c?.bg : "rgba(255,255,255,0.025)",
+                      border: occupied
+                        ? `1px solid ${c?.border ?? "rgba(255,255,255,0.15)"}`
+                        : "1px dashed rgba(255,255,255,0.12)",
+                      borderRadius: "3px",
+                      color: occupied ? c?.fg : "rgba(255,255,255,0.38)",
+                      cursor: occupied ? "pointer" : "default",
+                    }}
+                  >
+                    <div style={{ fontSize: "12px", fontWeight: 850 }}>
+                      {room.shortTitle}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: "2px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {occupied?.representative?.name ?? "비어있음"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
 
             {dayUseCount > 0 && (
               <div
@@ -872,11 +900,6 @@ function ByDateGridView({
               </div>
             )}
 
-            {isExpanded && (
-              <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", padding: "10px 12px" }}>
-                <ReservationTable rows={list} {...tableProps} />
-              </div>
-            )}
           </section>
         );
       })}
@@ -888,17 +911,23 @@ function RoomCell({
   primary,
   secondary,
   reservation,
+  onOpen,
 }: {
   primary: string;
   secondary: string;
   reservation: AdminReservationRow | null;
+  onOpen: (row: AdminReservationRow) => void;
 }) {
   const occupied = reservation != null;
   const c = reservation ? STATUS_COLOR[reservation.status] : null;
   return (
-    <div
+    <button
+      type="button"
+      disabled={!reservation}
+      onClick={() => reservation && onOpen(reservation)}
       title={`${primary} · ${secondary}`}
       style={{
+        width: "100%",
         padding: "6px 4px",
         border: occupied
           ? `1px solid ${c?.border ?? "rgba(255,255,255,0.15)"}`
@@ -912,6 +941,7 @@ function RoomCell({
         justifyContent: "center",
         alignItems: "center",
         gap: "0px",
+        cursor: occupied ? "pointer" : "default",
       }}
     >
       <div
@@ -953,7 +983,7 @@ function RoomCell({
           {reservation.representative.name}
         </div>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -1285,6 +1315,7 @@ function ExpandedDetail({
   onConfirm,
   onCancel,
   onEdit,
+  onMoveRoom,
   historyState,
 }: {
   row: AdminReservationRow;
@@ -1293,6 +1324,7 @@ function ExpandedDetail({
   onConfirm: (r: AdminReservationRow) => void;
   onCancel: (r: AdminReservationRow) => void;
   onEdit: (r: AdminReservationRow) => void;
+  onMoveRoom?: (r: AdminReservationRow) => void;
   historyState: HistoryState;
 }) {
   return (
@@ -1416,6 +1448,16 @@ function ExpandedDetail({
       )}
       {canWrite && row.status === "confirmed" && (
         <div className="mb-3 flex gap-2 flex-wrap">
+          {row.reservation_type === "stay" && row.room_key && onMoveRoom && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onMoveRoom(row)}
+              style={primaryBtn(busy)}
+            >
+              호실 바꾸기
+            </button>
+          )}
           <button
             type="button"
             disabled={busy}
@@ -1452,6 +1494,7 @@ function ReservationDetailDialog({
   onConfirm,
   onCancel,
   onEdit,
+  onMoveRoom,
 }: {
   row: AdminReservationRow | null;
   canWrite: boolean;
@@ -1461,6 +1504,7 @@ function ReservationDetailDialog({
   onConfirm: (r: AdminReservationRow) => void;
   onCancel: (r: AdminReservationRow) => void;
   onEdit: (r: AdminReservationRow) => void;
+  onMoveRoom: (r: AdminReservationRow) => void;
 }) {
   if (!row) return null;
   return (
@@ -1522,6 +1566,7 @@ function ReservationDetailDialog({
           onConfirm={onConfirm}
           onCancel={onCancel}
           onEdit={onEdit}
+          onMoveRoom={onMoveRoom}
           historyState={historyState}
         />
       </div>
@@ -2120,64 +2165,31 @@ function AssignRoomDialog({
   );
 }
 
-// ---------- Swap Dialog ----------
+// ---------- Room Move Dialog ----------
 
-function SwapDialog({
-  open,
+function RoomMoveDialog({
+  target,
+  rows,
+  busy,
   onClose,
-  confirmedRows,
-  onSwap,
+  onMove,
 }: {
-  open: boolean;
+  target: AdminReservationRow | null;
+  rows: AdminReservationRow[];
+  busy: boolean;
   onClose: () => void;
-  confirmedRows: AdminReservationRow[];
-  onSwap: (idA: number, idB: number) => Promise<boolean>;
+  onMove: (row: AdminReservationRow, roomKey: RoomKey) => Promise<boolean>;
 }) {
-  const [idA, setIdA] = useState<number | null>(null);
-  const [idB, setIdB] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  if (!open) return null;
-
-  const rowA = confirmedRows.find((r) => r.id === idA) ?? null;
-  const rowB = confirmedRows.find((r) => r.id === idB) ?? null;
-
-  const dateMatched = rowA && rowB ? rowA.check_in === rowB.check_in && rowA.check_out === rowB.check_out : true;
-  const capacityMatched = (() => {
-    if (!rowA || !rowB || !rowA.room_key || !rowB.room_key) return true;
-    const aCanTakeB = ROOMS[rowB.room_key].maxGuests >= rowA.guests_count;
-    const bCanTakeA = ROOMS[rowA.room_key].maxGuests >= rowB.guests_count;
-    return aCanTakeB && bCanTakeA;
-  })();
-
-  const canSwap = (() => {
-    if (!rowA || !rowB || rowA.id === rowB.id) return false;
-    if (!rowA.room_key || !rowB.room_key) return false;
-    return dateMatched && capacityMatched;
-  })();
-
-  const swapReason = (() => {
-    if (!rowA || !rowB) return null;
-    if (!dateMatched) return "선택한 두 예약은 숙박 일정(체크인·체크아웃 날짜)이 동일해야 호실을 스왑할 수 있습니다.";
-    if (!capacityMatched) return "선택한 두 예약은 인원 대비 방 수용 인원이 맞지 않아 스왑할 수 없습니다.";
-    return null;
-  })();
-
-  const sorted = [...confirmedRows].sort((a, b) => a.check_in.localeCompare(b.check_in));
-
-  async function execute() {
-    if (!rowA || !rowB || !canSwap) return;
-    setBusy(true);
-    try {
-      const ok = await onSwap(rowA.id, rowB.id);
-      if (ok) {
-        setIdA(null);
-        setIdB(null);
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
+  if (!target || target.reservation_type !== "stay" || !target.room_key) return null;
+  const currentRoomKey = target.room_key;
+  const sameDateRows = rows.filter(
+    (r) =>
+      r.id !== target.id &&
+      r.status === "confirmed" &&
+      r.reservation_type === "stay" &&
+      r.check_in === target.check_in &&
+      r.check_out === target.check_out,
+  );
 
   return (
     <div
@@ -2193,7 +2205,7 @@ function SwapDialog({
         zIndex: 60,
         padding: "16px",
       }}
-      onClick={onClose}
+      onClick={busy ? undefined : onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -2208,33 +2220,72 @@ function SwapDialog({
         }}
       >
         <p style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.12em", color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>
-          호실 스왑
+          ROOM CHANGE
         </p>
         <h2 style={{ fontSize: "18px", fontWeight: 800, marginTop: "4px", letterSpacing: "-0.01em" }}>
-          두 확정 예약의 호실을 교체합니다
+          호실 바꾸기
         </h2>
         <p style={{ marginTop: "6px", fontSize: "12px", color: "rgba(255,255,255,0.65)" }}>
-          동일한 일정(체크인·체크아웃)에 방이 배정된 확정 예약끼리만 스왑이 가능합니다.
+          #{target.id} · {target.representative?.name ?? "-"} · {target.check_in}~{target.check_out}
         </p>
 
-        {confirmedRows.length < 2 ? (
-          <p style={{ marginTop: "16px", fontSize: "13px", color: "rgba(255,255,255,0.55)" }}>
-            스왑 가능한 확정 예약이 2건 이상 없습니다.
-          </p>
-        ) : (
-          <div style={{ marginTop: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            <SwapPicker label="예약 A" value={idA} onChange={setIdA} rows={sorted} excludeId={idB} />
-            <SwapPicker label="예약 B" value={idB} onChange={setIdB} rows={sorted} excludeId={idA} />
-          </div>
-        )}
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {ROOM_KEYS.map((roomKey) => {
+            const room = ROOMS[roomKey];
+            const occupant = sameDateRows.find((r) => r.room_key === roomKey) ?? null;
+            const current = currentRoomKey === roomKey;
+            const targetFits = room.maxGuests >= target.guests_count;
+            const swapFits = !occupant || ROOMS[currentRoomKey].maxGuests >= occupant.guests_count;
+            const disabled = busy || current || !targetFits || !swapFits;
+            return (
+              <button
+                key={roomKey}
+                type="button"
+                disabled={disabled}
+                onClick={() => void onMove(target, roomKey)}
+                style={{
+                  minHeight: "74px",
+                  padding: "9px",
+                  textAlign: "left",
+                  backgroundColor: current
+                    ? "rgba(255,255,255,0.04)"
+                    : occupant
+                      ? "rgba(167,139,250,0.12)"
+                      : "rgba(0,194,209,0.08)",
+                  border: current
+                    ? "1px solid rgba(255,255,255,0.14)"
+                    : occupant
+                      ? "1px solid rgba(167,139,250,0.45)"
+                      : "1px solid rgba(0,194,209,0.35)",
+                  borderRadius: "3px",
+                  color: disabled ? "rgba(255,255,255,0.35)" : "#fff",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.65 : 1,
+                }}
+              >
+                <div style={{ fontSize: "13px", fontWeight: 900 }}>{room.shortTitle}</div>
+                <div style={{ marginTop: "3px", fontSize: "11px", color: "rgba(255,255,255,0.62)" }}>
+                  {current
+                    ? "현재 호실"
+                    : occupant
+                      ? `${occupant.representative?.name ?? "-"}와 교체`
+                      : "빈 호실로 이동"}
+                </div>
+                {!targetFits && (
+                  <div style={{ marginTop: "3px", fontSize: "10px", color: "#ff6b7a", fontWeight: 800 }}>
+                    인원 초과
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
 
-        {swapReason && (
-          <p style={{ marginTop: "12px", fontSize: "12px", color: "#ff6b7a", lineHeight: 1.5 }}>
-            {swapReason}
-          </p>
-        )}
+        <p style={{ marginTop: "12px", fontSize: "12px", color: "rgba(255,255,255,0.55)", lineHeight: 1.5 }}>
+          이 호실 변경은 위 숙박 일정 안에서만 적용됩니다. 이미 배정된 호실을 선택하면 두 예약의 호실을 서로 바꿉니다.
+        </p>
 
-        <div style={{ marginTop: "20px", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+        <div style={{ marginTop: "16px", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
           <button
             type="button"
             onClick={onClose}
@@ -2252,70 +2303,8 @@ function SwapDialog({
           >
             닫기
           </button>
-          <button
-            type="button"
-            disabled={!canSwap || busy}
-            onClick={execute}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "2px",
-              border: "none",
-              backgroundColor: "#a78bfa",
-              color: "#12082e",
-              fontSize: "13px",
-              fontWeight: 800,
-              cursor: !canSwap || busy ? "not-allowed" : "pointer",
-              opacity: !canSwap || busy ? 0.5 : 1,
-            }}
-          >
-            {busy ? "처리 중…" : "스왑 실행"}
-          </button>
         </div>
       </div>
     </div>
-  );
-}
-
-function SwapPicker({
-  label,
-  value,
-  onChange,
-  rows,
-  excludeId,
-}: {
-  label: string;
-  value: number | null;
-  onChange: (v: number | null) => void;
-  rows: AdminReservationRow[];
-  excludeId: number | null;
-}) {
-  return (
-    <label style={{ display: "block" }}>
-      <span style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.55)", marginBottom: "6px" }}>
-        {label}
-      </span>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        style={{
-          width: "100%",
-          padding: "8px 10px",
-          backgroundColor: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.15)",
-          borderRadius: "2px",
-          color: "#e6e8ec",
-          fontSize: "13px",
-        }}
-      >
-        <option value="">선택하세요</option>
-        {rows
-          .filter((r) => r.id !== excludeId)
-          .map((r) => (
-            <option key={r.id} value={r.id}>
-              #{r.id} · {r.room_key ? ROOMS[r.room_key].shortTitle : "?"} · {r.check_in}~{r.check_out} · {r.representative?.name ?? "-"} ({r.guests_count}명)
-            </option>
-          ))}
-      </select>
-    </label>
   );
 }
