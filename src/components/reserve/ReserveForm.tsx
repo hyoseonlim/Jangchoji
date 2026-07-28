@@ -22,6 +22,7 @@ import {
 import { CopyableAccount } from "../CopyableAccount";
 
 const MIN_GUESTS = 2;
+const DEFAULT_GUESTS = 4;
 const MIN_SATURDAY_GUESTS = 4;
 const MAX_GUESTS = 10;
 
@@ -86,7 +87,7 @@ export function ReserveForm({
 
   const [checkIn, setCheckIn] = useState(() => todayISO(7));
   const [checkOut, setCheckOut] = useState(() => todayISO(8));
-  const [guestsCount, setGuestsCount] = useState(MIN_GUESTS);
+  const [guestsCount, setGuestsCount] = useState(DEFAULT_GUESTS);
   const [petCount, setPetCount] = useState(0);
   const [availability, setAvailability] = useState<Availability>({ state: "idle" });
   const [selections, setSelections] = useState<PackageSelections>(EMPTY_SELECTIONS);
