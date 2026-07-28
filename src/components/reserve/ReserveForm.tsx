@@ -4,13 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Dictionary, Locale } from "@/i18n";
 import {
-  CONFIG_KEYS,
   CONFIG_LABELS,
+  DAY_USE_CONFIG_KEYS,
+  DAY_USE_PRICES,
+  STAY_CONFIG_KEYS,
   type GroupSize,
   type ConfigKey,
   type PackageLine,
   type PackagePriceRow,
   type PackageSelections,
+  computeDayUseLines,
   computeSelectionLines,
   holidaysInRange,
   hasSaturdayNight,
@@ -22,11 +25,13 @@ import {
 import { CopyableAccount } from "../CopyableAccount";
 
 const MIN_GUESTS = 2;
+const MIN_DAY_USE_GUESTS = 1;
 const DEFAULT_GUESTS = 4;
 const MIN_SATURDAY_GUESTS = 4;
 const MAX_GUESTS = 10;
 
 type Guest = { name: string; phone: string; isRepresentative: boolean };
+type ReservationMode = "stay" | "day_use";
 
 type DoneSnapshot = {
   totalPrice: number;
@@ -87,6 +92,7 @@ export function ReserveForm({
 
   const [checkIn, setCheckIn] = useState(() => todayISO(7));
   const [checkOut, setCheckOut] = useState(() => todayISO(8));
+  const [reservationMode, setReservationMode] = useState<ReservationMode>("stay");
   const [guestsCount, setGuestsCount] = useState(DEFAULT_GUESTS);
   const [petCount, setPetCount] = useState(0);
   const [availability, setAvailability] = useState<Availability>({ state: "idle" });
@@ -121,16 +127,25 @@ export function ReserveForm({
     [currentPackagePrices, checkIn, checkOut],
   );
   const selectionResult = useMemo(
-    () => computeSelectionLines(perPersonByConfig, selections),
-    [perPersonByConfig, selections],
+    () =>
+      reservationMode === "stay"
+        ? computeSelectionLines(perPersonByConfig, selections)
+        : computeDayUseLines(selections),
+    [perPersonByConfig, selections, reservationMode],
   );
   const totalQuantity = selectionResult?.totalQuantity ?? 0;
   const remainingQuantity = Math.max(0, guestsCount - totalQuantity);
-  const petFee = petCount * PET_FEE_PER_DOG;
+  const petFee = reservationMode === "stay" ? petCount * PET_FEE_PER_DOG : 0;
   const grandTotal = (selectionResult?.total ?? 0) + petFee;
   const season = useMemo(() => summarizeSeasonFromRange(checkIn, checkOut), [checkIn, checkOut]);
   const holidayNotes = useMemo(() => holidaysInRange(checkIn, checkOut), [checkIn, checkOut]);
-  const saturdaySmallGroup = guestsCount < MIN_SATURDAY_GUESTS && hasSaturdayNight(checkIn, checkOut);
+  const saturdaySmallGroup =
+    reservationMode === "stay" &&
+    guestsCount < MIN_SATURDAY_GUESTS &&
+    hasSaturdayNight(checkIn, checkOut);
+  const dayUseBbqSelected = reservationMode === "day_use" && (selections.day_bbq ?? 0) > 0;
+  const dayUseBbqBlocked = dayUseBbqSelected && checkIn <= todayISO();
+  const minGuestsForMode = reservationMode === "day_use" ? MIN_DAY_USE_GUESTS : MIN_GUESTS;
 
   const nights = useMemo(() => {
     if (!checkIn || !checkOut || checkOut <= checkIn) return 0;
@@ -141,6 +156,10 @@ export function ReserveForm({
 
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
+    if (reservationMode === "day_use") {
+      setAvailability({ state: "ok" });
+      return;
+    }
     if (!checkIn || !checkOut || checkOut <= checkIn) {
       setAvailability({ state: "idle" });
       return;
@@ -173,7 +192,7 @@ export function ReserveForm({
         });
       });
     return () => controller.abort();
-  }, [checkIn, checkOut, guestsCount]);
+  }, [checkIn, checkOut, guestsCount, reservationMode]);
 
   // 인원 수가 줄어들면 guests 배열 끝에서 잘라내고, 대표자 유지
   useEffect(() => {
@@ -190,11 +209,15 @@ export function ReserveForm({
   // 인원 수가 줄어들면 초과된 패키지 수량도 축소
   useEffect(() => {
     setSelections((prev) => {
-      const sum = Object.values(prev).reduce((s, n) => s + (n ?? 0), 0);
+      const sum = Object.entries(prev).reduce(
+        (s, [key, n]) => (key === "day_bbq" ? s : s + (n ?? 0)),
+        0,
+      );
       if (sum <= guestsCount) return prev;
       const next: PackageSelections = { ...prev };
       let overflow = sum - guestsCount;
-      for (const key of [...CONFIG_KEYS].reverse()) {
+      const keys = reservationMode === "stay" ? STAY_CONFIG_KEYS : DAY_USE_CONFIG_KEYS.filter((key) => key !== "day_bbq");
+      for (const key of [...keys].reverse()) {
         if (overflow <= 0) break;
         const cur = next[key] ?? 0;
         if (cur <= 0) continue;
@@ -204,7 +227,7 @@ export function ReserveForm({
       }
       return next;
     });
-  }, [guestsCount]);
+  }, [guestsCount, reservationMode]);
 
   // 대표자 전화번호가 바뀌면 확인 체크를 초기화 (재확인 강제)
   useEffect(() => {
@@ -217,6 +240,14 @@ export function ReserveForm({
   }, [representativeName, depositorEdited]);
 
   const canAddGuest = guests.length < guestsCount;
+
+  function switchMode(mode: ReservationMode) {
+    setReservationMode(mode);
+    setSelections(EMPTY_SELECTIONS);
+    setPetCount(0);
+    setGuestsCount((prev) => Math.max(mode === "day_use" ? MIN_DAY_USE_GUESTS : MIN_GUESTS, prev));
+    setSubmitError(null);
+  }
 
   function updateGuest(idx: number, patch: Partial<Guest>) {
     setGuests((prev) => prev.map((g, i) => (i === idx ? { ...g, ...patch } : g)));
@@ -238,15 +269,27 @@ export function ReserveForm({
     });
   }
   function adjustGuestsCount(n: number) {
-    setGuestsCount(Math.min(MAX_GUESTS, Math.max(MIN_GUESTS, n)));
+    const min = reservationMode === "day_use" ? MIN_DAY_USE_GUESTS : MIN_GUESTS;
+    setGuestsCount(Math.min(MAX_GUESTS, Math.max(min, n)));
+    setSelections((prev) => {
+      if (reservationMode !== "day_use" || (prev.day_bbq ?? 0) === 0) return prev;
+      return { ...prev, day_bbq: Math.min(MAX_GUESTS, Math.max(min, n)) };
+    });
   }
 
   function changeQuantity(key: ConfigKey, delta: number) {
     setSelections((prev) => {
       const cur = prev[key] ?? 0;
+      if (reservationMode === "day_use" && key === "day_bbq") {
+        const next = cur > 0 ? 0 : guestsCount;
+        const merged = { ...prev };
+        if (next === 0) delete merged[key];
+        else merged[key] = next;
+        return merged;
+      }
       const otherSum =
         Object.entries(prev).reduce(
-          (s, [k, v]) => (k === key ? s : s + (v ?? 0)),
+          (s, [k, v]) => (k === key || k === "day_bbq" ? s : s + (v ?? 0)),
           0,
         );
       const maxForThis = Math.max(0, guestsCount - otherSum);
@@ -269,6 +312,10 @@ export function ReserveForm({
       );
       return;
     }
+    if (dayUseBbqBlocked) {
+      setSubmitError("당일 BBQ는 이용일 하루 전까지 예약이 필요합니다.");
+      return;
+    }
     if (totalQuantity !== guestsCount) {
       setSubmitError(`패키지 수량 합계(${totalQuantity}명)가 인원(${guestsCount}명)과 일치해야 합니다.`);
       return;
@@ -288,10 +335,11 @@ export function ReserveForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           packageSelections: selections,
+          reservationType: reservationMode,
           guestsCount,
-          petCount,
+          petCount: reservationMode === "stay" ? petCount : 0,
           checkIn,
-          checkOut,
+          checkOut: reservationMode === "stay" ? checkOut : undefined,
           guests,
           memo: memo.trim() || undefined,
           depositorName: depositorName.trim() || undefined,
@@ -306,11 +354,11 @@ export function ReserveForm({
       setDone({
         totalPrice: json.totalPrice,
         checkIn,
-        checkOut,
-        nights,
+        checkOut: reservationMode === "stay" ? checkOut : checkIn,
+        nights: reservationMode === "stay" ? nights : 0,
         guestsCount,
-        petCount,
-        petFee,
+        petCount: reservationMode === "stay" ? petCount : 0,
+        petFee: reservationMode === "stay" ? petFee : 0,
         lines: selectionResult?.lines ?? [],
         season,
       });
@@ -353,12 +401,19 @@ export function ReserveForm({
               예약 내역
             </p>
             <dl className="space-y-2" style={{ fontSize: "13px" }}>
-              <Row k="일정" v={`${formatDateKo(done.checkIn)} → ${formatDateKo(done.checkOut)} · ${done.nights}박`} />
+              <Row
+                k="일정"
+                v={
+                  done.nights > 0
+                    ? `${formatDateKo(done.checkIn)} → ${formatDateKo(done.checkOut)} · ${done.nights}박`
+                    : `${formatDateKo(done.checkIn)} 당일 이용`
+                }
+              />
               <Row k="인원" v={`${done.guestsCount}명`} />
               {done.petCount > 0 && (
                 <Row k="반려견 동반" v={`${done.petCount}마리 (+${won(done.petFee)})`} />
               )}
-              <Row k="객실" v={<span className="text-black/60">관리자 확인 후 배정</span>} />
+              {done.nights > 0 && <Row k="객실" v={<span className="text-black/60">관리자 확인 후 배정</span>} />}
               <Row
                 k="계절"
                 v={
@@ -445,6 +500,10 @@ export function ReserveForm({
           : "-";
 
   const quantityMatch = totalQuantity === guestsCount;
+  const visiblePackageKeys =
+    reservationMode === "stay"
+      ? STAY_CONFIG_KEYS
+      : DAY_USE_CONFIG_KEYS.filter((key) => key !== "day_bbq");
   const availabilityBlocked =
     availability.state === "unavailable" || availability.state === "error";
 
@@ -455,9 +514,35 @@ export function ReserveForm({
           RESERVATION
         </p>
         <h1 className="text-black mt-2" style={{ fontSize: "clamp(24px, 5vw, 44px)", fontWeight: 900, letterSpacing: "-0.03em" }}>
-          숙박 패키지 예약
+          {reservationMode === "stay" ? "숙박 패키지 예약" : "당일 패키지 예약"}
         </h1>
         <div className="mt-3 w-12 h-0.5" style={{ backgroundColor: "#00C2D1" }} />
+      </div>
+
+      <div className="mb-6 inline-flex bg-white" style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: "3px", padding: "3px" }}>
+        {[
+          ["stay", "숙박 패키지"],
+          ["day_use", "당일 패키지"],
+        ].map(([mode, label]) => {
+          const active = reservationMode === mode;
+          return (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => switchMode(mode as ReservationMode)}
+              className="px-4 py-2"
+              style={{
+                backgroundColor: active ? "#00C2D1" : "transparent",
+                color: active ? "#001518" : "rgba(0,0,0,0.68)",
+                borderRadius: "2px",
+                fontSize: "13px",
+                fontWeight: 800,
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       <div
@@ -471,16 +556,29 @@ export function ReserveForm({
         }}
       >
         <ul className="text-black/75 space-y-1">
-          <li>• 토요일을 제외한 일정은 <strong className="text-black">2인부터 온라인 예약</strong>이 가능합니다.</li>
-          <li>• <strong className="text-black">토요일 4인 미만 예약</strong>은 전화로 문의 부탁드립니다.</li>
-          <li>• 인원별로 각자 다른 패키지를 선택할 수 있습니다.</li>
-          <li>• <strong className="text-black">객실 배정은 관리자 확정 시</strong> 이루어지며, 대표자 연락처로 안내드립니다.</li>
-          <li>• 숙박 없이 액티비티만 이용하실 예정이라면 별도 예약 없이 방문해주세요.</li>
+          {reservationMode === "stay" ? (
+            <>
+              <li>• 토요일을 제외한 일정은 <strong className="text-black">2인부터 온라인 예약</strong>이 가능합니다.</li>
+              <li>• <strong className="text-black">토요일 4인 미만 예약</strong>은 전화로 문의 부탁드립니다.</li>
+              <li>• 인원별로 각자 다른 패키지를 선택할 수 있습니다.</li>
+              <li>• 놀이기구 옵션, 수상스키·웨이크보드 등은 방문 후 현장에서 추가 이용 가능합니다.</li>
+              <li>• BBQ는 당일 추가가 불가하며 <strong className="text-black">무조건 하루 전 예약 필수</strong>입니다.</li>
+              <li>• <strong className="text-black">객실 배정은 관리자 확정 시</strong> 이루어지며, 대표자 연락처로 안내드립니다.</li>
+            </>
+          ) : (
+            <>
+              <li>• 숙박 없이 당일 이용만 하실 경우 <strong className="text-black">예약 없이 방문 가능</strong>합니다.</li>
+              <li>• 당일 패키지를 예약해주시면 <strong className="text-black">뷰 좋은 테이블을 미리 배정</strong>해드릴 수 있습니다.</li>
+              <li>• 놀이기구 옵션, 수상스키·웨이크보드 등은 방문 후 현장에서 추가 이용 가능합니다.</li>
+              <li>• 당일 BBQ 이용 시 <strong className="text-black">1인 30,000원</strong>이 추가됩니다.</li>
+              <li>• BBQ는 당일 추가가 불가하며 <strong className="text-black">무조건 하루 전 예약 필수</strong>입니다.</li>
+            </>
+          )}
         </ul>
       </div>
 
       <Section title="1. 일정">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className={`grid grid-cols-1 ${reservationMode === "stay" ? "sm:grid-cols-2" : ""} gap-4`}>
           <Field label="체크인">
             <input
               type="date"
@@ -502,22 +600,28 @@ export function ReserveForm({
               required
             />
           </Field>
-          <Field label="체크아웃">
-            <input
-              type="date"
-              value={checkOut}
-              min={checkIn}
-              onChange={(e) => setCheckOut(e.target.value)}
-              className="w-full px-3 py-2.5 bg-white"
-              style={inputStyle}
-              required
-            />
-          </Field>
+          {reservationMode === "stay" && (
+            <Field label="체크아웃">
+              <input
+                type="date"
+                value={checkOut}
+                min={checkIn}
+                onChange={(e) => setCheckOut(e.target.value)}
+                className="w-full px-3 py-2.5 bg-white"
+                style={inputStyle}
+                required
+              />
+            </Field>
+          )}
         </div>
         <p className="text-black/55 mt-2" style={{ fontSize: "12px" }}>
-          {nights > 0 ? `총 ${nights}박 · ${seasonLabel}` : "체크아웃은 체크인 다음날 이후여야 합니다."}
+          {reservationMode === "stay"
+            ? nights > 0
+              ? `총 ${nights}박 · ${seasonLabel}`
+              : "체크아웃은 체크인 다음날 이후여야 합니다."
+            : `${formatDateKo(checkIn)} 당일 이용`}
         </p>
-        {holidayNotes.length > 0 && (
+        {reservationMode === "stay" && holidayNotes.length > 0 && (
           <div
             className="mt-2 p-2.5"
             style={{
@@ -540,8 +644,8 @@ export function ReserveForm({
         )}
       </Section>
 
-      <Section title="2. 인원 및 반려견 동반">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <Section title={reservationMode === "stay" ? "2. 인원 및 반려견 동반" : "2. 인원"}>
+        <div className={`grid grid-cols-1 ${reservationMode === "stay" ? "sm:grid-cols-2" : ""} gap-4`}>
           <div className="p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
             <span className="block text-black/70 mb-2" style={{ fontSize: "12px", fontWeight: 600 }}>
               숙박 인원
@@ -550,8 +654,8 @@ export function ReserveForm({
               <button
                 type="button"
                 onClick={() => adjustGuestsCount(guestsCount - 1)}
-                disabled={guestsCount <= MIN_GUESTS}
-                style={{ ...stepBtnStyle, opacity: guestsCount <= MIN_GUESTS ? 0.4 : 1 }}
+                disabled={guestsCount <= minGuestsForMode}
+                style={{ ...stepBtnStyle, opacity: guestsCount <= minGuestsForMode ? 0.4 : 1 }}
               >
                 −
               </button>
@@ -568,11 +672,12 @@ export function ReserveForm({
               </button>
             </div>
             <p className="text-black/55 mt-1.5" style={{ fontSize: "11px" }}>
-              최소 {MIN_GUESTS}명 · 최대 {MAX_GUESTS}명
+              최소 {minGuestsForMode}명 · 최대 {MAX_GUESTS}명
               {saturdaySmallGroup ? " · 토요일 4인 미만 전화 문의" : ""}
             </p>
           </div>
 
+          {reservationMode === "stay" && (
           <div className="p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
             <span className="block text-black/70 mb-2" style={{ fontSize: "12px", fontWeight: 600 }}>
               반려견 동반 (마리당 +₩30,000)
@@ -602,13 +707,14 @@ export function ReserveForm({
               {petCount > 0 ? `반려견 추가 요금 +${won(petFee)}` : "반려견 미동반"}
             </p>
           </div>
+          )}
         </div>
-        <div className="mt-3">
+        {reservationMode === "stay" && <div className="mt-3">
           <AvailabilityBadge availability={availability} />
-        </div>
+        </div>}
       </Section>
 
-      <Section title="3. 패키지 (인원별 선택)">
+      <Section title={reservationMode === "stay" ? "3. 패키지 (인원별 선택)" : "3. 당일 패키지 (인원별 선택)"}>
         <div
           className="mb-3 flex items-center justify-between p-3"
           style={{
@@ -629,9 +735,12 @@ export function ReserveForm({
         </div>
 
         <ul className="space-y-2">
-          {CONFIG_KEYS.map((key) => {
+          {visiblePackageKeys.map((key) => {
             const quantity = selections[key] ?? 0;
-            const perPerson = perPersonByConfig[key];
+            const perPerson =
+              reservationMode === "stay"
+                ? perPersonByConfig[key]
+                : DAY_USE_PRICES[key as keyof typeof DAY_USE_PRICES];
             const range = priceRanges[key];
             const disabled = remainingQuantity === 0 && quantity === 0;
             const active = quantity > 0;
@@ -656,7 +765,7 @@ export function ReserveForm({
                     {perPerson != null ? (
                       <>
                         1인 총 <strong className="text-black">{won(perPerson)}</strong>
-                        <span className="text-black/45"> ({nights}박)</span>
+                        {reservationMode === "stay" && <span className="text-black/45"> ({nights}박)</span>}
                       </>
                     ) : range ? (
                       <>
@@ -714,6 +823,26 @@ export function ReserveForm({
             );
           })}
         </ul>
+        {reservationMode === "day_use" && (
+          <div className="mt-3 p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={(selections.day_bbq ?? 0) > 0}
+                onChange={() => changeQuantity("day_bbq", 1)}
+                className="mt-0.5"
+              />
+              <span className="text-black" style={{ fontSize: "13px", lineHeight: 1.6, fontWeight: 700 }}>
+                당일 BBQ 추가 <span className="text-black/55">1인 {won(DAY_USE_PRICES.day_bbq)} · 당일 추가 불가 · 하루 전 예약 필수</span>
+              </span>
+            </label>
+            {dayUseBbqBlocked && (
+              <p className="mt-2" style={{ color: "#e11d48", fontSize: "12px", fontWeight: 700 }}>
+                BBQ는 무조건 하루 전에 예약해야 합니다. 이용일을 내일 이후로 선택해주세요.
+              </p>
+            )}
+          </div>
+        )}
       </Section>
 
       <Section title="4. 예약자">
@@ -804,12 +933,16 @@ export function ReserveForm({
       </Section>
 
       <Section title="5. 요청사항 (선택)">
+        <p className="text-black/60 mb-2" style={{ fontSize: "12px", lineHeight: 1.6 }}>
+          수상레저 이용 인원과 실제 방문 인원이 다를 경우 테이블 세팅 준비를 위해 요청사항에 남겨주세요.
+          예: 수상레저 5명 이용, 총 방문 8명
+        </p>
         <textarea
           value={memo}
           onChange={(e) => setMemo(e.target.value)}
           maxLength={1000}
           rows={4}
-          placeholder="특별한 요청이 있으시면 남겨주세요."
+          placeholder="예: 수상레저는 5명 이용하고, 총 8명 방문 예정입니다."
           className="w-full px-3 py-2.5"
           style={inputStyle}
         />
@@ -823,13 +956,20 @@ export function ReserveForm({
           예약 요약
         </p>
         <dl className="space-y-2" style={{ fontSize: "13px" }}>
-          <Row k="일정" v={`${formatDateKo(checkIn)} → ${formatDateKo(checkOut)} · ${nights}박`} />
+          <Row
+            k="일정"
+            v={
+              reservationMode === "stay"
+                ? `${formatDateKo(checkIn)} → ${formatDateKo(checkOut)} · ${nights}박`
+                : `${formatDateKo(checkIn)} 당일 이용`
+            }
+          />
           <Row k="인원" v={`${guestsCount}명`} />
           {petCount > 0 && (
             <Row k="반려견 동반" v={`${petCount}마리 (+${won(petFee)})`} />
           )}
-          <Row k="객실" v={<span className="text-black/60">관리자 확인 후 배정</span>} />
-          <Row k="계절" v={seasonLabel} />
+          {reservationMode === "stay" && <Row k="객실" v={<span className="text-black/60">관리자 확인 후 배정</span>} />}
+          {reservationMode === "stay" && <Row k="계절" v={seasonLabel} />}
         </dl>
 
         {selectionResult && selectionResult.lines.length > 0 ? (
@@ -962,6 +1102,7 @@ export function ReserveForm({
             !phoneConfirmed ||
             !paymentConfirmed ||
             !quantityMatch ||
+            dayUseBbqBlocked ||
             grandTotal <= 0 ||
             availability.state !== "ok"
           }
@@ -976,6 +1117,7 @@ export function ReserveForm({
               !phoneConfirmed ||
               !paymentConfirmed ||
               !quantityMatch ||
+              dayUseBbqBlocked ||
               grandTotal <= 0 ||
               availability.state !== "ok"
                 ? 0.5
@@ -985,6 +1127,7 @@ export function ReserveForm({
               !phoneConfirmed ||
               !paymentConfirmed ||
               !quantityMatch ||
+              dayUseBbqBlocked ||
               grandTotal <= 0 ||
               availability.state !== "ok"
                 ? "not-allowed"
@@ -1001,6 +1144,8 @@ export function ReserveForm({
                 ? "일정 확인 중..."
                 : !quantityMatch
                   ? `패키지 ${remainingQuantity > 0 ? `${remainingQuantity}명 더 선택` : `${-remainingQuantity}명 초과`}`
+                  : dayUseBbqBlocked
+                    ? "BBQ 하루 전 예약 필요"
                   : !phoneConfirmed
                     ? "전화번호 확인 체크 필요"
                     : !paymentConfirmed

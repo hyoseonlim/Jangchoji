@@ -52,7 +52,9 @@ CREATE INDEX idx_products_filter ON products (season, group_size, day_type) WHER
 --     Σ quantity == guests_count · Σ lineTotal == total_price (앱 레벨 보장).
 --   package_label      : 관리자 목록 요약 ("3종×3, 5종×2").
 --   depositor_name_enc : 입금자명 (대표자와 다를 수 있음). AES-256-GCM 암호화.
+--   reservation_type   : stay = 숙박 패키지, day_use = 당일 패키지.
 --   room_key           : 물리 객실 (4/5/6인실 각 A·B 2개, 8인실 1개 = 총 7개).
+--                        당일 패키지는 room_key = NULL 로 저장.
 --                        동일 room_key + 날짜 범위 겹침 예약은 EXCLUDE 제약으로 차단.
 --   source             : online = 웹 예약 폼, manual = 관리자 수기 등록.
 --   price_override     : 계산가와 다른 금액을 최종가로 저장할 때 (할인·특별가 등).
@@ -60,6 +62,7 @@ CREATE INDEX idx_products_filter ON products (season, group_size, day_type) WHER
 ------------------------------------------------------------
 CREATE TABLE reservations (
   id                 SERIAL PRIMARY KEY,
+  reservation_type   TEXT NOT NULL DEFAULT 'stay' CHECK (reservation_type IN ('stay','day_use')),
   packages           JSONB NOT NULL,
   package_label      TEXT NOT NULL,
   season             TEXT NOT NULL CHECK (season IN ('peak','off','mixed')),
@@ -93,6 +96,7 @@ CREATE TABLE reservations (
 );
 
 CREATE INDEX idx_reservations_status_created ON reservations (status, created_at DESC);
+CREATE INDEX idx_reservations_type_check_in ON reservations (reservation_type, check_in);
 CREATE INDEX idx_reservations_check_in ON reservations (check_in);
 CREATE INDEX idx_reservations_room_key
   ON reservations (room_key, check_in)

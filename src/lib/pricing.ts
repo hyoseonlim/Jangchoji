@@ -91,7 +91,7 @@ export function summarizeSeason(nights: Date[]): "peak" | "off" | "mixed" {
 
 export const PET_FEE_PER_DOG = 30000;
 
-export const CONFIG_KEYS = [
+export const STAY_CONFIG_KEYS = [
   "rides3",
   "rides5",
   "morning",
@@ -103,7 +103,25 @@ export const CONFIG_KEYS = [
   "afternoon_bbq",
   "allday_bbq",
 ] as const;
+export const DAY_USE_CONFIG_KEYS = [
+  "day_rides3",
+  "day_rides5",
+  "day_morning",
+  "day_afternoon",
+  "day_allday",
+  "day_flyfish",
+  "day_waterpark",
+  "day_boat_tour",
+  "day_nami_tour",
+  "day_wake_lesson",
+  "day_wake_riding",
+  "day_inboat",
+  "day_bbq",
+] as const;
+export const CONFIG_KEYS = [...STAY_CONFIG_KEYS, ...DAY_USE_CONFIG_KEYS] as const;
 export type ConfigKey = (typeof CONFIG_KEYS)[number];
+export type StayConfigKey = (typeof STAY_CONFIG_KEYS)[number];
+export type DayUseConfigKey = (typeof DAY_USE_CONFIG_KEYS)[number];
 
 export const CONFIG_LABELS: Record<ConfigKey, string> = {
   rides3: "숙박 + 놀이기구 3종",
@@ -116,15 +134,52 @@ export const CONFIG_LABELS: Record<ConfigKey, string> = {
   morning_bbq: "숙박 + 놀이기구 오전무제한 + BBQ",
   afternoon_bbq: "숙박 + 놀이기구 오후무제한 + BBQ",
   allday_bbq: "숙박 + 놀이기구 종일무제한 + BBQ",
+  day_rides3: "당일 + 놀이기구 3가지",
+  day_rides5: "당일 + 놀이기구 5가지",
+  day_morning: "당일 + 놀이기구 오전 무제한",
+  day_afternoon: "당일 + 놀이기구 오후 무제한",
+  day_allday: "당일 + 놀이기구 종일 무제한",
+  day_flyfish: "플라이피쉬",
+  day_waterpark: "워터파크만 이용",
+  day_boat_tour: "보트 투어",
+  day_nami_tour: "남이섬 투어",
+  day_wake_lesson: "수상스키&웨이크보드 초보 강습",
+  day_wake_riding: "수상스키&웨이크보드 경험자 라이딩",
+  day_inboat: "럭셔리 인보트 보팅",
+  day_bbq: "당일 BBQ",
+};
+
+export const DAY_USE_PRICES: Record<DayUseConfigKey, number> = {
+  day_rides3: 28000,
+  day_rides5: 45000,
+  day_morning: 55000,
+  day_afternoon: 65000,
+  day_allday: 75000,
+  day_flyfish: 15000,
+  day_waterpark: 10000,
+  day_boat_tour: 55000,
+  day_nami_tour: 110000,
+  day_wake_lesson: 65000,
+  day_wake_riding: 28000,
+  day_inboat: 25000,
+  day_bbq: 30000,
 };
 
 export function isConfigKey(v: unknown): v is ConfigKey {
   return typeof v === "string" && (CONFIG_KEYS as readonly string[]).includes(v);
 }
 
+export function isStayConfigKey(v: unknown): v is StayConfigKey {
+  return typeof v === "string" && (STAY_CONFIG_KEYS as readonly string[]).includes(v);
+}
+
+export function isDayUseConfigKey(v: unknown): v is DayUseConfigKey {
+  return typeof v === "string" && (DAY_USE_CONFIG_KEYS as readonly string[]).includes(v);
+}
+
 // DB products 행의 클라이언트용 뷰.
 export type PackagePriceRow = {
-  config_key: ConfigKey;
+  config_key: StayConfigKey;
   group_size: GroupSize;
   season: Season;
   day_type: DayType;
@@ -136,7 +191,7 @@ export type ConfigPriceRange = { min: number; max: number };
 // configKey 별로 (season, day_type) 4조합 중 최저·최고가.
 export function priceRangeByConfig(rows: PackagePriceRow[]): Record<ConfigKey, ConfigPriceRange | null> {
   const out: Record<string, ConfigPriceRange | null> = {};
-  for (const key of CONFIG_KEYS) out[key] = null;
+  for (const key of STAY_CONFIG_KEYS) out[key] = null;
   for (const r of rows) {
     const cur = out[r.config_key];
     out[r.config_key] = cur
@@ -155,7 +210,7 @@ export function perPersonStayTotalByConfig(
   checkOut: string,
 ): Record<ConfigKey, number | null> {
   const out: Record<string, number | null> = {};
-  for (const key of CONFIG_KEYS) out[key] = null;
+  for (const key of STAY_CONFIG_KEYS) out[key] = null;
 
   const nights = nightsBetween(checkIn, checkOut);
   if (nights.length === 0) return out as Record<ConfigKey, number | null>;
@@ -163,7 +218,7 @@ export function perPersonStayTotalByConfig(
   const lookup = new Map<string, number>();
   for (const r of rows) lookup.set(`${r.config_key}:${r.season}:${r.day_type}`, r.price);
 
-  for (const key of CONFIG_KEYS) {
+  for (const key of STAY_CONFIG_KEYS) {
     let perPersonTotal = 0;
     let ok = true;
     for (const night of nights) {
@@ -202,7 +257,7 @@ export function computeSelectionLines(
   const lines: PackageLine[] = [];
   let total = 0;
   let totalQuantity = 0;
-  for (const key of CONFIG_KEYS) {
+  for (const key of STAY_CONFIG_KEYS) {
     const quantity = Math.max(0, Math.trunc(selections[key] ?? 0));
     if (quantity === 0) continue;
     const perPerson = perPersonByConfig[key];
@@ -219,6 +274,30 @@ export function computeSelectionLines(
     totalQuantity += quantity;
   }
   return { lines, total, totalQuantity };
+}
+
+export function computeDayUseLines(
+  selections: PackageSelections,
+): { lines: PackageLine[]; total: number; totalQuantity: number } | null {
+  const lines: PackageLine[] = [];
+  let total = 0;
+  let totalQuantity = 0;
+  for (const key of DAY_USE_CONFIG_KEYS) {
+    const quantity = Math.max(0, Math.trunc(selections[key] ?? 0));
+    if (quantity === 0) continue;
+    const perPersonSubtotal = DAY_USE_PRICES[key];
+    const lineTotal = perPersonSubtotal * quantity;
+    lines.push({
+      configKey: key,
+      label: CONFIG_LABELS[key],
+      quantity,
+      perPersonSubtotal,
+      lineTotal,
+    });
+    total += lineTotal;
+    if (key !== "day_bbq") totalQuantity += quantity;
+  }
+  return lines.length > 0 ? { lines, total, totalQuantity } : null;
 }
 
 // 관리자 표시용 요약 문자열. 예: "3종×3, 5종×2, 종일무제한×1"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  createDayUseReservation,
   createReservation,
   MIN_GUESTS,
   validateOnlineGuestPolicy,
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
   }
   if (typeof body !== "object" || body === null) return badRequest("잘못된 요청 본문");
   const b = body as Record<string, unknown>;
+  const reservationType = b.reservationType === "day_use" ? "day_use" : "stay";
 
   const selections = parseSelections(b.packageSelections);
   if (!selections || Object.keys(selections).length === 0) {
@@ -47,9 +49,9 @@ export async function POST(req: Request) {
   if (
     typeof b.guestsCount !== "number" ||
     !Number.isInteger(b.guestsCount) ||
-    b.guestsCount < MIN_GUESTS
+    b.guestsCount < (reservationType === "day_use" ? 1 : MIN_GUESTS)
   ) {
-    return badRequest(`인원은 ${MIN_GUESTS}명 이상이어야 합니다.`);
+    return badRequest(`인원은 ${reservationType === "day_use" ? 1 : MIN_GUESTS}명 이상이어야 합니다.`);
   }
   if (totalQuantity !== b.guestsCount) {
     return badRequest(
@@ -57,10 +59,12 @@ export async function POST(req: Request) {
     );
   }
   if (typeof b.checkIn !== "string" || !ISO_DATE_RE.test(b.checkIn)) return badRequest("checkIn 형식 오류");
-  if (typeof b.checkOut !== "string" || !ISO_DATE_RE.test(b.checkOut)) return badRequest("checkOut 형식 오류");
-  if (b.checkOut <= b.checkIn) return badRequest("체크아웃은 체크인 이후여야 합니다.");
-  const policyError = validateOnlineGuestPolicy(b.checkIn, b.checkOut, b.guestsCount);
-  if (policyError) return badRequest(policyError);
+  if (reservationType === "stay") {
+    if (typeof b.checkOut !== "string" || !ISO_DATE_RE.test(b.checkOut)) return badRequest("checkOut 형식 오류");
+    if (b.checkOut <= b.checkIn) return badRequest("체크아웃은 체크인 이후여야 합니다.");
+    const policyError = validateOnlineGuestPolicy(b.checkIn, b.checkOut, b.guestsCount);
+    if (policyError) return badRequest(policyError);
+  }
   if (!Array.isArray(b.guests)) return badRequest("guests 형식 오류");
   if (b.paymentConfirmed !== true) return badRequest("입금 확인 체크가 필요합니다.");
   const memo = typeof b.memo === "string" ? b.memo.slice(0, 1000) : undefined;
@@ -94,17 +98,28 @@ export async function POST(req: Request) {
       : 0;
 
   try {
-    const { reservation, quote } = await createReservation({
-      packageSelections: selections,
-      guestsCount: b.guestsCount,
-      petCount,
-      checkIn: b.checkIn,
-      checkOut: b.checkOut,
-      guests,
-      memo,
-      depositorName,
-      paymentConfirmed: true,
-    });
+    const { reservation, quote } =
+      reservationType === "day_use"
+        ? await createDayUseReservation({
+            packageSelections: selections,
+            guestsCount: b.guestsCount,
+            date: b.checkIn,
+            guests,
+            memo,
+            depositorName,
+            paymentConfirmed: true,
+          })
+        : await createReservation({
+            packageSelections: selections,
+            guestsCount: b.guestsCount,
+            petCount,
+            checkIn: b.checkIn,
+            checkOut: b.checkOut as string,
+            guests,
+            memo,
+            depositorName,
+            paymentConfirmed: true,
+          });
 
     const rep = guests.find((g) => g.isRepresentative);
     const priceStr = new Intl.NumberFormat("ko-KR").format(quote.total);
@@ -112,6 +127,7 @@ export async function POST(req: Request) {
     const memoLine = memo && memo.trim().length > 0 ? `요청사항: ${memo.trim()}\n` : "";
     await notifyAdmin(
       `날짜: ${reservation.check_in} ~ ${reservation.check_out}\n` +
+      `구분: ${reservationType === "day_use" ? "당일 패키지" : "숙박 패키지"}\n` +
       `예약자: ${rep?.name ?? "-"}\n` +
       `인원: ${reservation.guests_count}명\n` +
       petLine +

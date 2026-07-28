@@ -3,17 +3,21 @@ import { getSupabaseAdmin } from "./supabase-server";
 import { encrypt, decrypt, hashPhone, maskName, maskPhone } from "./encryption";
 import {
   CONFIG_LABELS,
-  CONFIG_KEYS,
+  DAY_USE_CONFIG_KEYS,
   PET_FEE_PER_DOG,
+  STAY_CONFIG_KEYS,
   type ConfigKey,
   type GroupSize,
   type PackageLine,
   type PackagePriceRow,
   type PackageSelections,
+  computeDayUseLines,
   computeSelectionLines,
   dayTypeForDate,
   hasSaturdayNight,
+  isDayUseConfigKey,
   isConfigKey,
+  isStayConfigKey,
   nightsBetween,
   perPersonStayTotalByConfig,
   seasonForDate,
@@ -28,6 +32,7 @@ import {
 } from "./rooms";
 
 export type ReservationStatus = "pending" | "confirmed" | "cancelled";
+export type ReservationType = "stay" | "day_use";
 
 export type GuestInput = { name: string; phone?: string; isRepresentative: boolean };
 
@@ -63,6 +68,18 @@ export function validateOnlineGuestPolicy(
   return null;
 }
 
+function addDaysISO(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // 고객 예약 : 인원과 패키지만 지정. 방 배정은 관리자가 확정 시 결정.
 export type CreateReservationInput = {
   packageSelections: PackageSelections;
@@ -70,6 +87,16 @@ export type CreateReservationInput = {
   petCount?: number;
   checkIn: string;
   checkOut: string;
+  guests: GuestInput[];
+  memo?: string;
+  depositorName?: string;
+  paymentConfirmed: boolean;
+};
+
+export type CreateDayUseReservationInput = {
+  packageSelections: PackageSelections;
+  guestsCount: number;
+  date: string;
   guests: GuestInput[];
   memo?: string;
   depositorName?: string;
@@ -114,9 +141,9 @@ export async function listActivePackagePrices(): Promise<PackagePriceRow[]> {
     .eq("is_active", true);
   if (error) throw new Error(`상품 가격 조회 실패: ${error.message}`);
   return (data ?? [])
-    .filter((r) => isConfigKey(r.config_key))
+    .filter((r) => isStayConfigKey(r.config_key))
     .map((r) => ({
-      config_key: r.config_key as ConfigKey,
+      config_key: r.config_key,
       group_size: r.group_size as GroupSize,
       season: r.season as PackagePriceRow["season"],
       day_type: r.day_type as PackagePriceRow["day_type"],
@@ -156,9 +183,9 @@ export async function quoteReservation(
   if (!data || data.length === 0) throw new Error("상품 가격이 등록되지 않았습니다.");
 
   const rows: PackagePriceRow[] = data
-    .filter((r) => isConfigKey(r.config_key))
+    .filter((r) => isStayConfigKey(r.config_key))
     .map((r) => ({
-      config_key: r.config_key as ConfigKey,
+      config_key: r.config_key,
       group_size: groupSize,
       season: r.season as PackagePriceRow["season"],
       day_type: r.day_type as PackagePriceRow["day_type"],
@@ -188,6 +215,33 @@ export async function quoteReservation(
     petCount: safePetCount,
     lines: result.lines,
     season: summarizeSeason(nights),
+    packageLabel,
+  };
+}
+
+export function quoteDayUseReservation(
+  packageSelections: PackageSelections,
+  guestsCount: number,
+): QuoteResult {
+  if (!Number.isInteger(guestsCount) || guestsCount < 1) {
+    throw new Error("인원 수가 올바르지 않습니다.");
+  }
+  const result = computeDayUseLines(packageSelections);
+  if (!result) throw new Error("최소 1개 이상의 당일 패키지를 선택해주세요.");
+  if (result.totalQuantity !== guestsCount) {
+    throw new Error(
+      `선택한 패키지 수량(${result.totalQuantity}명)이 예약 인원(${guestsCount}명)과 일치해야 합니다.`,
+    );
+  }
+  const packageLabel = summarizePackageLines(result.lines);
+  return {
+    total: result.total,
+    packageTotal: result.total,
+    petFee: 0,
+    guestsCount,
+    petCount: 0,
+    lines: result.lines,
+    season: "off",
     packageLabel,
   };
 }
@@ -334,6 +388,7 @@ export async function createReservation(input: CreateReservationInput) {
   const { data: reservation, error: rErr } = await supabase
     .from("reservations")
     .insert({
+      reservation_type: "stay",
       packages: toStored(quote.lines),
       package_label: quote.packageLabel,
       season: quote.season,
@@ -341,6 +396,69 @@ export async function createReservation(input: CreateReservationInput) {
       pet_count: safePetCount,
       check_in: input.checkIn,
       check_out: input.checkOut,
+      total_price: quote.total,
+      status: "pending",
+      memo: input.memo ?? null,
+      depositor_name_enc: encrypt(depositorRaw),
+      room_key: null,
+      source: "online",
+    })
+    .select("*")
+    .single();
+
+  if (rErr || !reservation) {
+    throw new Error(`예약 생성 실패: ${rErr?.message}`);
+  }
+
+  await writeGuestRows(reservation.id, input.guests, { rollbackReservationOnError: true });
+
+  await supabase.from("reservation_history").insert({
+    reservation_id: reservation.id,
+    admin_username: null,
+    action: "created",
+    before_status: null,
+    after_status: "pending",
+  });
+
+  return { reservation, quote };
+}
+
+export async function createDayUseReservation(input: CreateDayUseReservationInput) {
+  if (!input.paymentConfirmed) {
+    throw new Error("입금 확인에 체크한 뒤 예약을 완료할 수 있습니다.");
+  }
+  if (input.guests.length === 0) {
+    throw new Error("예약자 정보를 1명 이상 입력해주세요.");
+  }
+  const reps = input.guests.filter((g) => g.isRepresentative);
+  if (reps.length !== 1) {
+    throw new Error("대표 예약자를 정확히 1명 지정해주세요.");
+  }
+  if (!reps[0].phone || reps[0].phone.replace(/\D+/g, "").length < 9) {
+    throw new Error("대표 예약자의 전화번호를 입력해주세요.");
+  }
+  if (!Number.isInteger(input.guestsCount) || input.guestsCount < 1) {
+    throw new Error("인원은 1명 이상이어야 합니다.");
+  }
+  if ((input.packageSelections.day_bbq ?? 0) > 0 && input.date <= todayISO()) {
+    throw new Error("당일 BBQ는 이용일 하루 전까지 예약이 필요합니다.");
+  }
+
+  const quote = quoteDayUseReservation(input.packageSelections, input.guestsCount);
+  const depositorRaw = (input.depositorName ?? "").trim() || reps[0].name.trim();
+  const supabase = getSupabaseAdmin();
+
+  const { data: reservation, error: rErr } = await supabase
+    .from("reservations")
+    .insert({
+      reservation_type: "day_use",
+      packages: toStored(quote.lines),
+      package_label: quote.packageLabel,
+      season: quote.season,
+      guests_count: input.guestsCount,
+      pet_count: 0,
+      check_in: input.date,
+      check_out: addDaysISO(input.date, 1),
       total_price: quote.total,
       status: "pending",
       memo: input.memo ?? null,
@@ -472,6 +590,7 @@ export async function adminCreateReservation(
   const { data: reservation, error: rErr } = await supabase
     .from("reservations")
     .insert({
+      reservation_type: "stay",
       packages: toStored(quote.lines),
       package_label: quote.packageLabel,
       season: quote.season,
@@ -518,6 +637,7 @@ export async function adminCreateReservation(
 // ========================================
 type ReservationRow = {
   id: number;
+  reservation_type: ReservationType;
   packages: unknown;
   package_label: string;
   season: string;
@@ -703,6 +823,7 @@ export type AdminGuestDetail = { name: string; phone: string | null; isRepresent
 
 export type AdminReservationRow = {
   id: number;
+  reservation_type: ReservationType;
   status: ReservationStatus;
   packages: StoredPackage[];
   package_label: string;
@@ -767,7 +888,7 @@ export async function listReservationsForAdmin(opts: {
   let query = supabase
     .from("reservations")
     .select(
-      "id,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
+      "id,reservation_type,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
     )
     .order("created_at", { ascending: false })
     .limit(500);
@@ -798,6 +919,7 @@ export async function listReservationsForAdmin(opts: {
 
     return {
       id: r.id,
+      reservation_type: r.reservation_type === "day_use" ? "day_use" : "stay",
       status: r.status,
       packages: parseStored(r.packages),
       package_label: r.package_label,
@@ -886,4 +1008,4 @@ export async function listReservationHistory(
   }));
 }
 
-export { CONFIG_KEYS, CONFIG_LABELS, dayTypeForDate, seasonForDate };
+export { STAY_CONFIG_KEYS as CONFIG_KEYS, CONFIG_LABELS, dayTypeForDate, seasonForDate };

@@ -270,7 +270,7 @@ export function AdminDashboard({
 
   function askConfirm(row: AdminReservationRow) {
     // room_key 가 없는 대기 예약(신규 온라인 예약)은 방 배정 다이얼로그로 라우팅
-    if (row.room_key == null) {
+    if (row.reservation_type === "stay" && row.room_key == null) {
       setAssignTarget(row);
       return;
     }
@@ -700,6 +700,8 @@ function ByDateGridView({
         const isToday = date === today;
         const isExpanded = expandedDates.has(date);
         const totalGuests = list.reduce((s, r) => s + r.guests_count, 0);
+        const stayCount = list.filter((r) => r.reservation_type === "stay").length;
+        const dayUseCount = list.filter((r) => r.reservation_type === "day_use").length;
 
         // 각 물리 객실별로 그 날짜에 점유된 예약 찾기
         const cellByRoom = new Map<RoomKey, AdminReservationRow>();
@@ -707,7 +709,7 @@ function ByDateGridView({
           if (r.room_key) cellByRoom.set(r.room_key, r);
         }
         const occupiedCount = cellByRoom.size;
-        const noRoomCount = list.length - occupiedCount;
+        const noRoomCount = list.filter((r) => r.reservation_type === "stay").length - occupiedCount;
 
         return (
           <section
@@ -758,7 +760,7 @@ function ByDateGridView({
                     )}
                   </h3>
                   <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", marginTop: "2px" }}>
-                    {occupiedCount}/{ROOM_KEYS.length} 객실 점유 · {totalGuests}명
+                    숙박 {stayCount}건 · 당일 {dayUseCount}건 · {occupiedCount}/{ROOM_KEYS.length} 객실 점유 · {totalGuests}명
                     {noRoomCount > 0 && (
                       <span style={{ color: "#ffc107", marginLeft: "6px" }}>
                         · 객실 미지정 {noRoomCount}건
@@ -798,6 +800,36 @@ function ByDateGridView({
                 })}
               </div>
             </button>
+
+            {dayUseCount > 0 && (
+              <div
+                style={{
+                  borderTop: "1px solid rgba(255,255,255,0.08)",
+                  padding: "8px 12px",
+                  backgroundColor: "rgba(0,194,209,0.06)",
+                }}
+              >
+                <div style={{ fontSize: "11px", fontWeight: 800, color: "#00d5e6", marginBottom: "5px" }}>
+                  당일 패키지
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {list.filter((r) => r.reservation_type === "day_use").map((r) => (
+                    <span
+                      key={r.id}
+                      style={{
+                        padding: "3px 7px",
+                        border: "1px solid rgba(0,213,230,0.25)",
+                        borderRadius: "2px",
+                        fontSize: "11px",
+                        color: "rgba(255,255,255,0.82)",
+                      }}
+                    >
+                      #{r.id} {r.representative?.name ?? "-"} · {r.guests_count}명 · {r.package_label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {isExpanded && (
               <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", padding: "10px 12px" }}>
@@ -984,7 +1016,12 @@ function ReservationTableRow({
   const expanded = expandedIds.has(row.id);
   const c = STATUS_COLOR[row.status];
   const busy = busyId === row.id;
-  const roomTitle = row.room_key ? ROOMS[row.room_key].title : "미지정";
+  const roomTitle =
+    row.reservation_type === "day_use"
+      ? "당일 이용"
+      : row.room_key
+        ? ROOMS[row.room_key].title
+        : "미지정";
   const nights = Math.max(
     1,
     Math.round((new Date(row.check_out).getTime() - new Date(row.check_in).getTime()) / 86_400_000),
@@ -1055,7 +1092,7 @@ function ReservationTableRow({
             {formatDateWithDay(row.check_in)} → {formatDateWithDay(row.check_out)}
           </div>
           <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", marginTop: "1px" }}>
-            {nights}박
+            {row.reservation_type === "day_use" ? "당일" : `${nights}박`}
             {isCheckInToday && !isCancelled && (
               <span
                 style={{
@@ -1170,7 +1207,10 @@ function ExpandedDetail({
           {new Date(row.created_at).toLocaleString("ko-KR")}
         </MiniField>
         <MiniField label="출처">
-          {row.source === "manual" ? (
+            {row.reservation_type === "day_use" && (
+              <span style={{ marginRight: "6px", color: "#00d5e6", fontWeight: 800 }}>당일</span>
+            )}
+            {row.source === "manual" ? (
             <>
               수기 등록
               {row.created_by_admin && (
@@ -1237,7 +1277,7 @@ function ExpandedDetail({
             onClick={() => onConfirm(row)}
             style={primaryBtn(busy)}
           >
-            {row.room_key == null ? "방 배정 및 확정" : "입금 확인 · 확정"}
+            {row.reservation_type === "stay" && row.room_key == null ? "방 배정 및 확정" : "입금 확인 · 확정"}
           </button>
           <button
             type="button"
