@@ -43,9 +43,7 @@ const STATUS_ORDER: Record<ReservationStatus, number> = {
   cancelled: 2,
 };
 
-type StatusFilter = "all" | ReservationStatus;
-type DateScope = "upcoming" | "all" | "past";
-type ViewMode = "list" | "date";
+type AdminTab = "pending" | "confirmed";
 
 type HistoryState =
   | { status: "idle" }
@@ -108,9 +106,7 @@ export function AdminDashboard({
   const canWrite = admin.role === "admin";
 
   const [rows, setRows] = useState(initialRows);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("pending");
-  const [dateScope, setDateScope] = useState<DateScope>("upcoming");
-  const [view, setView] = useState<ViewMode>("list");
+  const [tab, setTab] = useState<AdminTab>("pending");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [historyByRow, setHistoryByRow] = useState<Record<number, HistoryState>>({});
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -127,6 +123,7 @@ export function AdminDashboard({
   const [editorTarget, setEditorTarget] = useState<AdminReservationRow | null>(null);
   const [modal, setModal] = useState<AdminModalRequest | null>(null);
   const modalResolveRef = useRef<((ok: boolean) => void) | null>(null);
+  const [detailTarget, setDetailTarget] = useState<AdminReservationRow | null>(null);
   const [assignTarget, setAssignTarget] = useState<AdminReservationRow | null>(null);
   const [swapOpen, setSwapOpen] = useState(false);
   const [, startTransition] = useTransition();
@@ -169,13 +166,11 @@ export function AdminDashboard({
 
   const filtered = useMemo(() => {
     const list = rows.filter((r) => {
-      if (statusFilter !== "all" && r.status !== statusFilter) return false;
-      if (dateScope === "upcoming" && r.check_out < today) return false;
-      if (dateScope === "past" && r.check_in >= today) return false;
-      return true;
+      if (tab === "pending") return r.status === "pending";
+      return r.status === "confirmed";
     });
     return sortReservations(list);
-  }, [rows, statusFilter, dateScope, today]);
+  }, [rows, tab]);
 
   function openModal(request: AdminModalRequest): Promise<boolean> {
     return new Promise((resolve) => {
@@ -266,6 +261,12 @@ export function AdminDashboard({
       }
       return next;
     });
+  }
+
+  function openDetail(row: AdminReservationRow) {
+    setDetailTarget(row);
+    const cur = historyByRow[row.id];
+    if (!cur || cur.status === "error") void fetchHistory(row.id);
   }
 
   function askConfirm(row: AdminReservationRow) {
@@ -382,14 +383,7 @@ export function AdminDashboard({
     }
     await refresh();
     // 저장한 예약이 현재 필터에서 숨겨지지 않도록 자동 조정
-    if (statusFilter !== "all" && statusFilter !== result.status) {
-      setStatusFilter(result.status);
-    }
-    if (dateScope === "upcoming" && result.checkOut < today) {
-      setDateScope("all");
-    } else if (dateScope === "past" && result.checkIn >= today) {
-      setDateScope("all");
-    }
+    if (result.status === "pending" || result.status === "confirmed") setTab(result.status);
     // 방금 저장한 예약은 자동 확장해서 바로 확인 가능하도록
     setExpandedIds((prev) => new Set([...prev, result.id]));
   }
@@ -402,6 +396,7 @@ export function AdminDashboard({
     onConfirm: askConfirm,
     onCancel: askCancel,
     onEdit: openEdit,
+    onOpenDetail: openDetail,
     historyByRow,
     today,
   };
@@ -507,18 +502,18 @@ export function AdminDashboard({
           >
             {(
               [
-                ["list", "목록"],
-                ["date", "일자별"],
+                ["pending", "대기건", counts.pending, "#ffc107"],
+                ["confirmed", "확정건", counts.confirmed, "#00d5e6"],
               ] as const
-            ).map(([key, label]) => {
-              const active = view === key;
+            ).map(([key, label, count, accent]) => {
+              const active = tab === key;
               return (
                 <button
                   type="button"
                   key={key}
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setView(key)}
+                  onClick={() => setTab(key)}
                   style={{
                     padding: "6px 14px",
                     backgroundColor: active ? "#fff" : "transparent",
@@ -531,6 +526,9 @@ export function AdminDashboard({
                   }}
                 >
                   {label}
+                  <span style={{ marginLeft: "6px", color: active ? accent : "rgba(255,255,255,0.45)" }}>
+                    {count}
+                  </span>
                 </button>
               );
             })}
@@ -591,28 +589,15 @@ export function AdminDashboard({
           </div>
         </div>
 
-        <div
-          className="mt-2 pt-2 flex items-center justify-between gap-2 flex-wrap"
-          style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
-        >
-          <div className="flex flex-wrap gap-1">
-            <FilterChip label="확정 대기" active={statusFilter === "pending"} onClick={() => setStatusFilter("pending")} count={counts.pending} accent="#ffc107" />
-            <FilterChip label="확정" active={statusFilter === "confirmed"} onClick={() => setStatusFilter("confirmed")} count={counts.confirmed} accent="#00d5e6" />
-            <FilterChip label="취소" active={statusFilter === "cancelled"} onClick={() => setStatusFilter("cancelled")} count={counts.cancelled} accent="#ff6b7a" />
-            <FilterChip label="전체" active={statusFilter === "all"} onClick={() => setStatusFilter("all")} count={rows.length} />
-          </div>
-          <div className="flex flex-wrap gap-1">
-            <ScopeChip label="다가오는" active={dateScope === "upcoming"} onClick={() => setDateScope("upcoming")} />
-            <ScopeChip label="전체 기간" active={dateScope === "all"} onClick={() => setDateScope("all")} />
-            <ScopeChip label="지난 예약" active={dateScope === "past"} onClick={() => setDateScope("past")} />
-          </div>
-        </div>
+        <p className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: "11px", color: "rgba(255,255,255,0.48)" }}>
+          {tab === "pending" ? "대기건은 목록으로 확인하고 바로 확정 처리합니다." : "확정건은 다가오는 일정 기준으로 일자별 확인합니다."}
+        </p>
       </div>
 
       {/* Content */}
       {filtered.length === 0 ? (
         <EmptyState />
-      ) : view === "list" ? (
+      ) : tab === "pending" ? (
         <ReservationTable rows={filtered} {...tableProps} />
       ) : (
         <ByDateGridView
@@ -628,6 +613,26 @@ export function AdminDashboard({
         request={modal}
         onConfirm={() => resolveModal(true)}
         onCancel={() => resolveModal(false)}
+      />
+
+      <ReservationDetailDialog
+        row={detailTarget}
+        canWrite={canWrite}
+        busy={detailTarget ? busyId === detailTarget.id : false}
+        historyState={detailTarget ? historyByRow[detailTarget.id] ?? { status: "loading" } : { status: "idle" }}
+        onClose={() => setDetailTarget(null)}
+        onConfirm={(row) => {
+          setDetailTarget(null);
+          askConfirm(row);
+        }}
+        onCancel={(row) => {
+          setDetailTarget(null);
+          askCancel(row);
+        }}
+        onEdit={(row) => {
+          setDetailTarget(null);
+          openEdit(row);
+        }}
       />
 
       <ReservationEditor
@@ -673,6 +678,7 @@ function ByDateGridView({
   onToggleDate: (date: string) => void;
   tableProps: TableProps;
 }) {
+  const [showPastDates, setShowPastDates] = useState(false);
   // 일자별 점유 그룹핑
   const entries: ByDateEntry[] = useMemo(() => {
     const map = new Map<string, AdminReservationRow[]>();
@@ -691,12 +697,37 @@ function ByDateGridView({
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
+  const yesterday = addDaysISO(today, -1);
+  const pastEntries = entries.filter(([date]) => date < yesterday);
+  const recentEntries = entries.filter(([date]) => date >= yesterday);
+  const visibleEntries = showPastDates ? entries : recentEntries;
 
   if (entries.length === 0) return <EmptyState />;
 
   return (
     <div className="space-y-2">
-      {entries.map(([date, list]) => {
+      {pastEntries.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowPastDates((prev) => !prev)}
+          className="w-full text-left"
+          style={{
+            padding: "9px 12px",
+            backgroundColor: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "4px",
+            color: "rgba(255,255,255,0.72)",
+            fontSize: "12px",
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          지난 일자 {pastEntries.length}일 {showPastDates ? "숨기기" : "보기"}
+        </button>
+      )}
+      {visibleEntries.length === 0 ? (
+        <EmptyState />
+      ) : visibleEntries.map(([date, list]) => {
         const isToday = date === today;
         const isExpanded = expandedDates.has(date);
         const totalGuests = list.reduce((s, r) => s + r.guests_count, 0);
@@ -783,7 +814,7 @@ function ByDateGridView({
 
               {/* 7-cell grid */}
               <div
-                className="mt-2 grid gap-1"
+                className="mt-2 hidden md:grid gap-1"
                 style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
               >
                 {ROOM_KEYS.map((rk) => {
@@ -798,6 +829,12 @@ function ByDateGridView({
                     />
                   );
                 })}
+              </div>
+              <div className="mt-2 md:hidden space-y-1.5">
+                <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)" }}>
+                  {list.slice(0, 3).map((r) => r.representative?.name ?? `#${r.id}`).join(", ")}
+                  {list.length > 3 ? ` 외 ${list.length - 3}건` : ""}
+                </div>
               </div>
             </button>
 
@@ -814,18 +851,22 @@ function ByDateGridView({
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {list.filter((r) => r.reservation_type === "day_use").map((r) => (
-                    <span
+                    <button
+                      type="button"
                       key={r.id}
+                      onClick={() => tableProps.onOpenDetail(r)}
                       style={{
                         padding: "3px 7px",
                         border: "1px solid rgba(0,213,230,0.25)",
                         borderRadius: "2px",
                         fontSize: "11px",
                         color: "rgba(255,255,255,0.82)",
+                        backgroundColor: "transparent",
+                        cursor: "pointer",
                       }}
                     >
                       #{r.id} {r.representative?.name ?? "-"} · {r.guests_count}명 · {r.package_label}
-                    </span>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -923,6 +964,7 @@ type TableProps = {
   busyId: number | null;
   expandedIds: Set<number>;
   onToggle: (id: number) => void;
+  onOpenDetail: (row: AdminReservationRow) => void;
   onConfirm: (r: AdminReservationRow) => void;
   onCancel: (r: AdminReservationRow) => void;
   onEdit: (r: AdminReservationRow) => void;
@@ -934,48 +976,55 @@ const COL_COUNT = 6;
 
 function ReservationTable({ rows, ...props }: TableProps & { rows: AdminReservationRow[] }) {
   return (
-    <div
-      className="overflow-x-auto"
-      style={{
-        backgroundColor: "#14171c",
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: "4px",
-      }}
-    >
-      <table
+    <>
+      <div className="md:hidden space-y-2">
+        {rows.map((r) => (
+          <MobileReservationCard key={r.id} row={r} today={props.today} onOpen={props.onOpenDetail} />
+        ))}
+      </div>
+      <div
+        className="hidden md:block overflow-x-auto"
         style={{
-          width: "100%",
-          minWidth: "640px",
-          borderCollapse: "collapse",
-          fontSize: "13px",
-          color: "#fff",
+          backgroundColor: "#14171c",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "4px",
         }}
       >
-        <colgroup>
-          <col style={{ width: "90px" }} />
-          <col />
-          <col style={{ width: "180px" }} />
-          <col style={{ width: "130px" }} />
-          <col style={{ width: "130px" }} />
-          <col style={{ width: "32px" }} />
-        </colgroup>
-        <thead>
-          <tr style={thRowStyle}>
-            <th style={thStyle}>상태</th>
-            <th style={thStyle}>예약자</th>
-            <th style={thStyle}>일정</th>
-            <th style={thStyle}>객실 · 인원</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>금액</th>
-            <th style={thStyle} aria-label="확장" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <ReservationTableRow key={r.id} row={r} zebra={i % 2 === 1} {...props} />
-          ))}
-        </tbody>
-      </table>
-    </div>
+        <table
+          style={{
+            width: "100%",
+            minWidth: "640px",
+            borderCollapse: "collapse",
+            fontSize: "13px",
+            color: "#fff",
+          }}
+        >
+          <colgroup>
+            <col style={{ width: "90px" }} />
+            <col />
+            <col style={{ width: "180px" }} />
+            <col style={{ width: "130px" }} />
+            <col style={{ width: "130px" }} />
+            <col style={{ width: "32px" }} />
+          </colgroup>
+          <thead>
+            <tr style={thRowStyle}>
+              <th style={thStyle}>상태</th>
+              <th style={thStyle}>예약자</th>
+              <th style={thStyle}>일정</th>
+              <th style={thStyle}>객실 · 인원</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>금액</th>
+              <th style={thStyle} aria-label="확장" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <ReservationTableRow key={r.id} row={r} zebra={i % 2 === 1} {...props} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -1000,6 +1049,82 @@ const tdStyle: React.CSSProperties = {
   verticalAlign: "middle",
 };
 
+function reservationRoomTitle(row: AdminReservationRow): string {
+  if (row.reservation_type === "day_use") return "당일 이용";
+  return row.room_key ? ROOMS[row.room_key].title : "미지정";
+}
+
+function reservationNights(row: AdminReservationRow): number {
+  return Math.max(
+    1,
+    Math.round((new Date(row.check_out).getTime() - new Date(row.check_in).getTime()) / 86_400_000),
+  );
+}
+
+function MobileReservationCard({
+  row,
+  today,
+  onOpen,
+}: {
+  row: AdminReservationRow;
+  today: string;
+  onOpen: (row: AdminReservationRow) => void;
+}) {
+  const c = STATUS_COLOR[row.status];
+  const isToday = row.check_in === today;
+  const dateText =
+    row.reservation_type === "day_use"
+      ? `${formatDateWithDay(row.check_in)} 당일`
+      : `${formatDateWithDay(row.check_in)} · ${reservationNights(row)}박`;
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(row)}
+      className="w-full text-left"
+      style={{
+        backgroundColor: "#14171c",
+        border: `1px solid ${c.border}`,
+        borderRadius: "4px",
+        padding: "11px 12px",
+        color: "#fff",
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span style={{ fontSize: "14px", fontWeight: 850 }}>
+              {row.representative?.name || "이름 미기재"}
+            </span>
+            <span style={{ fontSize: "10px", fontWeight: 800, color: c.fg }}>
+              {STATUS_LABEL[row.status]}
+            </span>
+            {row.reservation_type === "day_use" && (
+              <span style={{ fontSize: "10px", fontWeight: 800, color: "#00d5e6" }}>당일</span>
+            )}
+            {isToday && <span style={{ fontSize: "10px", fontWeight: 800, color: "#00d5e6" }}>오늘</span>}
+          </div>
+          <div style={{ marginTop: "4px", fontSize: "12px", color: "rgba(255,255,255,0.65)" }}>
+            {dateText} · {row.guests_count}명 · {reservationRoomTitle(row)}
+          </div>
+          <div
+            style={{
+              marginTop: "5px",
+              fontSize: "12px",
+              color: "rgba(255,255,255,0.78)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {row.package_label}
+          </div>
+        </div>
+        <div style={{ fontSize: "13px", fontWeight: 850, whiteSpace: "nowrap" }}>{won(row.total_price)}</div>
+      </div>
+    </button>
+  );
+}
+
 function ReservationTableRow({
   row,
   zebra,
@@ -1016,16 +1141,8 @@ function ReservationTableRow({
   const expanded = expandedIds.has(row.id);
   const c = STATUS_COLOR[row.status];
   const busy = busyId === row.id;
-  const roomTitle =
-    row.reservation_type === "day_use"
-      ? "당일 이용"
-      : row.room_key
-        ? ROOMS[row.room_key].title
-        : "미지정";
-  const nights = Math.max(
-    1,
-    Math.round((new Date(row.check_out).getTime() - new Date(row.check_in).getTime()) / 86_400_000),
-  );
+  const roomTitle = reservationRoomTitle(row);
+  const nights = reservationNights(row);
   const isCheckInToday = row.check_in === today;
   const isCancelled = row.status === "cancelled";
   const rowBg = expanded
@@ -1326,6 +1443,92 @@ function ExpandedDetail({
   );
 }
 
+function ReservationDetailDialog({
+  row,
+  canWrite,
+  busy,
+  historyState,
+  onClose,
+  onConfirm,
+  onCancel,
+  onEdit,
+}: {
+  row: AdminReservationRow | null;
+  canWrite: boolean;
+  busy: boolean;
+  historyState: HistoryState;
+  onClose: () => void;
+  onConfirm: (r: AdminReservationRow) => void;
+  onCancel: (r: AdminReservationRow) => void;
+  onEdit: (r: AdminReservationRow) => void;
+}) {
+  if (!row) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-3 py-4"
+      style={{ backgroundColor: "rgba(0,0,0,0.62)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl"
+        style={{
+          maxHeight: "88vh",
+          overflowY: "auto",
+          backgroundColor: "#14171c",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: "6px",
+          color: "#fff",
+          padding: "14px",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p style={{ fontSize: "10px", fontWeight: 800, color: "rgba(255,255,255,0.45)", letterSpacing: "0.12em" }}>
+              RESERVATION #{row.id}
+            </p>
+            <h2 style={{ fontSize: "18px", fontWeight: 900, marginTop: "2px" }}>
+              {row.representative?.name ?? "이름 미기재"}
+            </h2>
+            <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.58)", marginTop: "2px" }}>
+              {row.reservation_type === "day_use" ? "당일" : reservationRoomTitle(row)} · {formatDateWithDay(row.check_in)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            style={{
+              width: "32px",
+              height: "32px",
+              border: "1px solid rgba(255,255,255,0.16)",
+              borderRadius: "2px",
+              backgroundColor: "transparent",
+              color: "rgba(255,255,255,0.75)",
+              fontSize: "18px",
+              cursor: "pointer",
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <ExpandedDetail
+          row={row}
+          canWrite={canWrite}
+          busy={busy}
+          onConfirm={onConfirm}
+          onCancel={onCancel}
+          onEdit={onEdit}
+          historyState={historyState}
+        />
+      </div>
+    </div>
+  );
+}
+
 function primaryBtn(busy: boolean): React.CSSProperties {
   return {
     padding: "7px 14px",
@@ -1553,68 +1756,6 @@ function SectionHeader({
         </span>
       )}
     </div>
-  );
-}
-
-function FilterChip({
-  label,
-  active,
-  onClick,
-  count,
-  accent,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  count: number;
-  accent?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: "5px 10px",
-        border: active ? `1px solid ${accent ?? "#fff"}` : "1px solid rgba(255,255,255,0.12)",
-        backgroundColor: active ? "rgba(255,255,255,0.06)" : "transparent",
-        color: active ? "#fff" : "rgba(255,255,255,0.65)",
-        fontSize: "12px",
-        fontWeight: 700,
-        borderRadius: "2px",
-        cursor: "pointer",
-      }}
-    >
-      {label} <span style={{ opacity: 0.6 }}>({count})</span>
-    </button>
-  );
-}
-
-function ScopeChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: "4px 10px",
-        backgroundColor: active ? "rgba(0,194,209,0.15)" : "transparent",
-        border: `1px solid ${active ? "rgba(0,194,209,0.4)" : "rgba(255,255,255,0.1)"}`,
-        color: active ? "#00d5e6" : "rgba(255,255,255,0.55)",
-        fontSize: "11px",
-        fontWeight: 700,
-        borderRadius: "999px",
-        cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
   );
 }
 

@@ -29,6 +29,7 @@ const MIN_DAY_USE_GUESTS = 1;
 const DEFAULT_GUESTS = 4;
 const MIN_SATURDAY_GUESTS = 4;
 const MAX_GUESTS = 10;
+const MAX_DAY_USE_BBQ_GUESTS = 20;
 
 type Guest = { name: string; phone: string; isRepresentative: boolean };
 type ReservationMode = "stay" | "day_use";
@@ -271,17 +272,14 @@ export function ReserveForm({
   function adjustGuestsCount(n: number) {
     const min = reservationMode === "day_use" ? MIN_DAY_USE_GUESTS : MIN_GUESTS;
     setGuestsCount(Math.min(MAX_GUESTS, Math.max(min, n)));
-    setSelections((prev) => {
-      if (reservationMode !== "day_use" || (prev.day_bbq ?? 0) === 0) return prev;
-      return { ...prev, day_bbq: Math.min(MAX_GUESTS, Math.max(min, n)) };
-    });
   }
 
   function changeQuantity(key: ConfigKey, delta: number) {
     setSelections((prev) => {
       const cur = prev[key] ?? 0;
       if (reservationMode === "day_use" && key === "day_bbq") {
-        const next = cur > 0 ? 0 : guestsCount;
+        const next = Math.min(MAX_DAY_USE_BBQ_GUESTS, Math.max(0, cur + delta));
+        if (next === cur) return prev;
         const merged = { ...prev };
         if (next === 0) delete merged[key];
         else merged[key] = next;
@@ -562,7 +560,6 @@ export function ReserveForm({
               <li>• <strong className="text-black">토요일 4인 미만 예약</strong>은 전화로 문의 부탁드립니다.</li>
               <li>• 인원별로 각자 다른 패키지를 선택할 수 있습니다.</li>
               <li>• 놀이기구 옵션, 수상스키·웨이크보드 등은 방문 후 현장에서 추가 이용 가능합니다.</li>
-              <li>• BBQ는 당일 추가가 불가하며 <strong className="text-black">무조건 하루 전 예약 필수</strong>입니다.</li>
               <li>• <strong className="text-black">객실 배정은 관리자 확정 시</strong> 이루어지며, 대표자 연락처로 안내드립니다.</li>
             </>
           ) : (
@@ -570,8 +567,7 @@ export function ReserveForm({
               <li>• 숙박 없이 당일 이용만 하실 경우 <strong className="text-black">예약 없이 방문 가능</strong>합니다.</li>
               <li>• 당일 패키지를 예약해주시면 <strong className="text-black">뷰 좋은 테이블을 미리 배정</strong>해드릴 수 있습니다.</li>
               <li>• 놀이기구 옵션, 수상스키·웨이크보드 등은 방문 후 현장에서 추가 이용 가능합니다.</li>
-              <li>• 당일 BBQ 이용 시 <strong className="text-black">1인 30,000원</strong>이 추가됩니다.</li>
-              <li>• BBQ는 당일 추가가 불가하며 <strong className="text-black">무조건 하루 전 예약 필수</strong>입니다.</li>
+              <li>• BBQ는 <strong className="text-black">1인 30,000원</strong>이며 <strong className="text-black">하루 전 예약 필수</strong>입니다.</li>
             </>
           )}
         </ul>
@@ -678,35 +674,35 @@ export function ReserveForm({
           </div>
 
           {reservationMode === "stay" && (
-          <div className="p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
-            <span className="block text-black/70 mb-2" style={{ fontSize: "12px", fontWeight: 600 }}>
-              반려견 동반 (마리당 +₩30,000)
-            </span>
-            <div className="inline-flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPetCount((prev) => Math.max(0, prev - 1))}
-                disabled={petCount <= 0}
-                style={{ ...stepBtnStyle, opacity: petCount <= 0 ? 0.4 : 1 }}
-              >
-                −
-              </button>
-              <span style={{ minWidth: "40px", textAlign: "center", fontWeight: 800, fontSize: "18px" }}>
-                {petCount}마리
+            <div className="p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
+              <span className="block text-black/70 mb-2" style={{ fontSize: "12px", fontWeight: 600 }}>
+                반려견 동반 (마리당 +₩30,000)
               </span>
-              <button
-                type="button"
-                onClick={() => setPetCount((prev) => Math.min(10, prev + 1))}
-                disabled={petCount >= 10}
-                style={{ ...stepBtnStyle, opacity: petCount >= 10 ? 0.4 : 1 }}
-              >
-                +
-              </button>
+              <div className="inline-flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPetCount((prev) => Math.max(0, prev - 1))}
+                  disabled={petCount <= 0}
+                  style={{ ...stepBtnStyle, opacity: petCount <= 0 ? 0.4 : 1 }}
+                >
+                  −
+                </button>
+                <span style={{ minWidth: "40px", textAlign: "center", fontWeight: 800, fontSize: "18px" }}>
+                  {petCount}마리
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPetCount((prev) => Math.min(10, prev + 1))}
+                  disabled={petCount >= 10}
+                  style={{ ...stepBtnStyle, opacity: petCount >= 10 ? 0.4 : 1 }}
+                >
+                  +
+                </button>
+              </div>
+              <p className="text-black/55 mt-1.5" style={{ fontSize: "11px" }}>
+                {petCount > 0 ? `반려견 추가 요금 +${won(petFee)}` : "반려견 미동반"}
+              </p>
             </div>
-            <p className="text-black/55 mt-1.5" style={{ fontSize: "11px" }}>
-              {petCount > 0 ? `반려견 추가 요금 +${won(petFee)}` : "반려견 미동반"}
-            </p>
-          </div>
           )}
         </div>
         {reservationMode === "stay" && <div className="mt-3">
@@ -825,17 +821,47 @@ export function ReserveForm({
         </ul>
         {reservationMode === "day_use" && (
           <div className="mt-3 p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
-            <label className="flex items-start gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={(selections.day_bbq ?? 0) > 0}
-                onChange={() => changeQuantity("day_bbq", 1)}
-                className="mt-0.5"
-              />
-              <span className="text-black" style={{ fontSize: "13px", lineHeight: 1.6, fontWeight: 700 }}>
-                당일 BBQ 추가 <span className="text-black/55">1인 {won(DAY_USE_PRICES.day_bbq)} · 당일 추가 불가 · 하루 전 예약 필수</span>
-              </span>
-            </label>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-black" style={{ fontSize: "13px", lineHeight: 1.6, fontWeight: 700 }}>
+                  BBQ 추가
+                </div>
+                <div className="text-black/55" style={{ fontSize: "12px", lineHeight: 1.5 }}>
+                  1인 {won(DAY_USE_PRICES.day_bbq)} · 당일 추가 불가 · 하루 전 예약 필수
+                </div>
+                {(selections.day_bbq ?? 0) > 0 && (
+                  <div className="text-black mt-1" style={{ fontSize: "12px", fontWeight: 800 }}>
+                    BBQ {selections.day_bbq}명 · 소계 {won((selections.day_bbq ?? 0) * DAY_USE_PRICES.day_bbq)}
+                  </div>
+                )}
+              </div>
+              <div className="inline-flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => changeQuantity("day_bbq", -1)}
+                  disabled={(selections.day_bbq ?? 0) === 0}
+                  style={{ ...smallStepBtn, opacity: (selections.day_bbq ?? 0) === 0 ? 0.35 : 1 }}
+                  aria-label="BBQ 인원 감소"
+                >
+                  −
+                </button>
+                <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 800, fontSize: "15px" }}>
+                  {selections.day_bbq ?? 0}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => changeQuantity("day_bbq", +1)}
+                  disabled={(selections.day_bbq ?? 0) >= MAX_DAY_USE_BBQ_GUESTS}
+                  style={{
+                    ...smallStepBtn,
+                    opacity: (selections.day_bbq ?? 0) >= MAX_DAY_USE_BBQ_GUESTS ? 0.35 : 1,
+                  }}
+                  aria-label="BBQ 인원 증가"
+                >
+                  +
+                </button>
+              </div>
+            </div>
             {dayUseBbqBlocked && (
               <p className="mt-2" style={{ color: "#e11d48", fontSize: "12px", fontWeight: 700 }}>
                 BBQ는 무조건 하루 전에 예약해야 합니다. 이용일을 내일 이후로 선택해주세요.
@@ -1114,22 +1140,22 @@ export function ReserveForm({
             borderRadius: "2px",
             opacity:
               submitting ||
-              !phoneConfirmed ||
-              !paymentConfirmed ||
-              !quantityMatch ||
-              dayUseBbqBlocked ||
-              grandTotal <= 0 ||
-              availability.state !== "ok"
+                !phoneConfirmed ||
+                !paymentConfirmed ||
+                !quantityMatch ||
+                dayUseBbqBlocked ||
+                grandTotal <= 0 ||
+                availability.state !== "ok"
                 ? 0.5
                 : 1,
             cursor:
               submitting ||
-              !phoneConfirmed ||
-              !paymentConfirmed ||
-              !quantityMatch ||
-              dayUseBbqBlocked ||
-              grandTotal <= 0 ||
-              availability.state !== "ok"
+                !phoneConfirmed ||
+                !paymentConfirmed ||
+                !quantityMatch ||
+                dayUseBbqBlocked ||
+                grandTotal <= 0 ||
+                availability.state !== "ok"
                 ? "not-allowed"
                 : "pointer",
           }}
@@ -1146,11 +1172,11 @@ export function ReserveForm({
                   ? `패키지 ${remainingQuantity > 0 ? `${remainingQuantity}명 더 선택` : `${-remainingQuantity}명 초과`}`
                   : dayUseBbqBlocked
                     ? "BBQ 하루 전 예약 필요"
-                  : !phoneConfirmed
-                    ? "전화번호 확인 체크 필요"
-                    : !paymentConfirmed
-                      ? "입금 확인 체크 필요"
-                      : "예약 신청"}
+                    : !phoneConfirmed
+                      ? "전화번호 확인 체크 필요"
+                      : !paymentConfirmed
+                        ? "입금 확인 체크 필요"
+                        : "예약 신청"}
         </button>
       </div>
     </form>
