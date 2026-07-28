@@ -162,11 +162,15 @@ export function ReservationEditor({
     if (!depositorEdited) setDepositorName(representativeName);
   }, [representativeName, depositorEdited]);
 
-  const perPersonByConfig = useMemo(
-    () => perPersonStayTotalByConfig(packagePrices, checkIn, checkOut),
-    [packagePrices, checkIn, checkOut],
+  const adminPackagePrices = useMemo(
+    () => packagePrices.filter((row) => row.group_size === "4"),
+    [packagePrices],
   );
-  const priceRanges = useMemo(() => priceRangeByConfig(packagePrices), [packagePrices]);
+  const perPersonByConfig = useMemo(
+    () => perPersonStayTotalByConfig(adminPackagePrices, checkIn, checkOut),
+    [adminPackagePrices, checkIn, checkOut],
+  );
+  const priceRanges = useMemo(() => priceRangeByConfig(adminPackagePrices), [adminPackagePrices]);
   const selectionResult = useMemo(
     () => computeSelectionLines(perPersonByConfig, selections),
     [perPersonByConfig, selections],

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   createReservation,
-  MAX_GUESTS_PER_RESERVATION,
   MIN_GUESTS,
+  validateOnlineGuestPolicy,
 } from "@/lib/reservations";
 import { isConfigKey, type PackageSelections } from "@/lib/pricing";
 import { notifyAdmin } from "@/lib/discord";
@@ -51,11 +51,6 @@ export async function POST(req: Request) {
   ) {
     return badRequest(`인원은 ${MIN_GUESTS}명 이상이어야 합니다.`);
   }
-  if (b.guestsCount > MAX_GUESTS_PER_RESERVATION) {
-    return badRequest(
-      `${MAX_GUESTS_PER_RESERVATION}인을 초과하는 예약은 전화 문의 부탁드립니다.`,
-    );
-  }
   if (totalQuantity !== b.guestsCount) {
     return badRequest(
       `선택한 패키지 수량(${totalQuantity}명)이 예약 인원(${b.guestsCount}명)과 일치해야 합니다.`,
@@ -64,6 +59,8 @@ export async function POST(req: Request) {
   if (typeof b.checkIn !== "string" || !ISO_DATE_RE.test(b.checkIn)) return badRequest("checkIn 형식 오류");
   if (typeof b.checkOut !== "string" || !ISO_DATE_RE.test(b.checkOut)) return badRequest("checkOut 형식 오류");
   if (b.checkOut <= b.checkIn) return badRequest("체크아웃은 체크인 이후여야 합니다.");
+  const policyError = validateOnlineGuestPolicy(b.checkIn, b.checkOut, b.guestsCount);
+  if (policyError) return badRequest(policyError);
   if (!Array.isArray(b.guests)) return badRequest("guests 형식 오류");
   if (b.paymentConfirmed !== true) return badRequest("입금 확인 체크가 필요합니다.");
   const memo = typeof b.memo === "string" ? b.memo.slice(0, 1000) : undefined;

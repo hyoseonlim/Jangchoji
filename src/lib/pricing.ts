@@ -122,9 +122,10 @@ export function isConfigKey(v: unknown): v is ConfigKey {
   return typeof v === "string" && (CONFIG_KEYS as readonly string[]).includes(v);
 }
 
-// DB products 행의 클라이언트용 뷰. group_size 는 현 스코프상 '4' 고정이라 뺐음.
+// DB products 행의 클라이언트용 뷰.
 export type PackagePriceRow = {
   config_key: ConfigKey;
+  group_size: GroupSize;
   season: Season;
   day_type: DayType;
   price: number;
@@ -250,4 +251,8 @@ export function holidaysInRange(
     if (name) out.push({ date: iso, name });
   }
   return out;
+}
+
+export function hasSaturdayNight(checkIn: string, checkOut: string): boolean {
+  return nightsBetween(checkIn, checkOut).some((night) => night.getDay() === 6);
 }

@@ -12,6 +12,7 @@ import {
   type PackageSelections,
   computeSelectionLines,
   dayTypeForDate,
+  hasSaturdayNight,
   isConfigKey,
   nightsBetween,
   perPersonStayTotalByConfig,
@@ -30,11 +31,37 @@ export type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
 export type GuestInput = { name: string; phone?: string; isRepresentative: boolean };
 
-// 온라인 스코프 : 4인 이상 숙박 패키지만 예약 가능 (수기 등록은 관리자가 값 자유롭게 지정 가능)
-export const FIXED_GROUP_SIZE: GroupSize = "4";
-export const MIN_GUESTS = 4;
+// 온라인 스코프 : 평일은 2인 이상, 토요일 포함 일정은 4인 이상 예약 가능.
+export const DEFAULT_GROUP_SIZE: GroupSize = "4";
+export const MIN_GUESTS = 2;
+export const MIN_SATURDAY_GUESTS = 4;
 // 8인실이 물리적으로 수용 가능한 최대 인원 (11인 이상은 단일 예약 불가)
 export const MAX_GUESTS_PER_RESERVATION = 10;
+export const SATURDAY_SMALL_GROUP_MESSAGE =
+  "토요일 4인 미만 예약은 전화로 문의 부탁드립니다.";
+
+export function groupSizeForGuests(guestsCount: number): GroupSize {
+  if (guestsCount <= 2) return "2";
+  if (guestsCount === 3) return "3";
+  return "4";
+}
+
+export function validateOnlineGuestPolicy(
+  checkIn: string,
+  checkOut: string,
+  guestsCount: number,
+): string | null {
+  if (!Number.isInteger(guestsCount) || guestsCount < MIN_GUESTS) {
+    return `인원은 ${MIN_GUESTS}명 이상이어야 합니다.`;
+  }
+  if (guestsCount > MAX_GUESTS_PER_RESERVATION) {
+    return `${MAX_GUESTS_PER_RESERVATION}인을 초과하는 예약은 전화 문의 부탁드립니다.`;
+  }
+  if (guestsCount < MIN_SATURDAY_GUESTS && hasSaturdayNight(checkIn, checkOut)) {
+    return SATURDAY_SMALL_GROUP_MESSAGE;
+  }
+  return null;
+}
 
 // 고객 예약 : 인원과 패키지만 지정. 방 배정은 관리자가 확정 시 결정.
 export type CreateReservationInput = {
@@ -83,14 +110,14 @@ export async function listActivePackagePrices(): Promise<PackagePriceRow[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("products")
-    .select("config_key, season, day_type, price")
-    .eq("group_size", FIXED_GROUP_SIZE)
+    .select("config_key, group_size, season, day_type, price")
     .eq("is_active", true);
   if (error) throw new Error(`상품 가격 조회 실패: ${error.message}`);
   return (data ?? [])
     .filter((r) => isConfigKey(r.config_key))
     .map((r) => ({
       config_key: r.config_key as ConfigKey,
+      group_size: r.group_size as GroupSize,
       season: r.season as PackagePriceRow["season"],
       day_type: r.day_type as PackagePriceRow["day_type"],
       price: r.price,
@@ -106,7 +133,7 @@ export async function quoteReservation(
   guestsCount: number,
   opts: { relaxed?: boolean; groupSize?: GroupSize; petCount?: number } = {},
 ): Promise<QuoteResult> {
-  const { relaxed = false, groupSize = FIXED_GROUP_SIZE, petCount = 0 } = opts;
+  const { relaxed = false, groupSize = DEFAULT_GROUP_SIZE, petCount = 0 } = opts;
   const safePetCount = Math.max(0, Math.floor(petCount || 0));
   const petFee = safePetCount * PET_FEE_PER_DOG;
 
@@ -132,6 +159,7 @@ export async function quoteReservation(
     .filter((r) => isConfigKey(r.config_key))
     .map((r) => ({
       config_key: r.config_key as ConfigKey,
+      group_size: groupSize,
       season: r.season as PackagePriceRow["season"],
       day_type: r.day_type as PackagePriceRow["day_type"],
       price: r.price,
@@ -276,13 +304,13 @@ export async function createReservation(input: CreateReservationInput) {
   if (!reps[0].phone || reps[0].phone.replace(/\D+/g, "").length < 9) {
     throw new Error("대표 예약자의 전화번호를 입력해주세요.");
   }
-  if (!Number.isInteger(input.guestsCount) || input.guestsCount < MIN_GUESTS) {
-    throw new Error(`인원은 ${MIN_GUESTS}명 이상이어야 합니다.`);
-  }
-  if (input.guestsCount > MAX_GUESTS_PER_RESERVATION) {
-    throw new Error(
-      `${MAX_GUESTS_PER_RESERVATION}인을 초과하는 예약은 전화 문의 부탁드립니다.`,
-    );
+  const policyError = validateOnlineGuestPolicy(
+    input.checkIn,
+    input.checkOut,
+    input.guestsCount,
+  );
+  if (policyError) {
+    throw new Error(policyError);
   }
 
   const safePetCount = Math.max(0, Math.floor(input.petCount || 0));
@@ -292,7 +320,7 @@ export async function createReservation(input: CreateReservationInput) {
     input.checkIn,
     input.checkOut,
     input.guestsCount,
-    { petCount: safePetCount },
+    { groupSize: groupSizeForGuests(input.guestsCount), petCount: safePetCount },
   );
 
   const capacityOk = await checkCapacity(input.checkIn, input.checkOut, input.guestsCount);

@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { checkCapacity, MAX_GUESTS_PER_RESERVATION, MIN_GUESTS } from "@/lib/reservations";
+import {
+  checkCapacity,
+  MIN_GUESTS,
+  validateOnlineGuestPolicy,
+} from "@/lib/reservations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,11 +34,12 @@ export async function GET(req: Request) {
       { status: 400 },
     );
   }
-  if (guestsCount > MAX_GUESTS_PER_RESERVATION) {
+  const policyError = validateOnlineGuestPolicy(checkIn, checkOut, guestsCount);
+  if (policyError) {
     return NextResponse.json(
       {
         available: false,
-        reason: `${MAX_GUESTS_PER_RESERVATION}인을 초과하는 예약은 전화 문의 부탁드립니다.`,
+        reason: policyError,
       },
       { headers: { "cache-control": "no-store" } },
     );

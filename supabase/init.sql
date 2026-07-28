@@ -323,7 +323,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO service_role
 
 ------------------------------------------------------------
 -- products 시드 : 120행 (성수기·비수기 × 4/3/2인 × 평일·토요일 × 10 config)
---   온라인 예약 폼은 4인 기준만 노출, 3인·2인 티어는 요금표 참조용.
+--   온라인 예약 폼은 2/3/4인 티어를 인원 수에 맞춰 사용.
+--   단, 토요일 포함 일정의 4인 미만 예약은 온라인 접수 대신 전화 문의 안내.
 ------------------------------------------------------------
 INSERT INTO products (season, group_size, day_type, config_key, name, has_bbq, price) VALUES
 -- ===== peak · 4인 · weekday =====

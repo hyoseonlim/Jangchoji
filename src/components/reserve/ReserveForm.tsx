@@ -6,12 +6,14 @@ import type { Dictionary, Locale } from "@/i18n";
 import {
   CONFIG_KEYS,
   CONFIG_LABELS,
+  type GroupSize,
   type ConfigKey,
   type PackageLine,
   type PackagePriceRow,
   type PackageSelections,
   computeSelectionLines,
   holidaysInRange,
+  hasSaturdayNight,
   perPersonStayTotalByConfig,
   priceRangeByConfig,
   summarizeSeasonFromRange,
@@ -19,7 +21,8 @@ import {
 } from "@/lib/pricing";
 import { CopyableAccount } from "../CopyableAccount";
 
-const MIN_GUESTS = 4;
+const MIN_GUESTS = 2;
+const MIN_SATURDAY_GUESTS = 4;
 const MAX_GUESTS = 10;
 
 type Guest = { name: string; phone: string; isRepresentative: boolean };
@@ -64,6 +67,12 @@ function formatDateKo(iso: string): string {
 
 const EMPTY_SELECTIONS: PackageSelections = {};
 
+function groupSizeForGuests(guestsCount: number): GroupSize {
+  if (guestsCount <= 2) return "2";
+  if (guestsCount === 3) return "3";
+  return "4";
+}
+
 export function ReserveForm({
   dict,
   locale,
@@ -97,10 +106,18 @@ export function ReserveForm({
   const representativeName = representative?.name.trim() ?? "";
   const representativePhone = representative?.phone.trim() ?? "";
 
-  const priceRanges = useMemo(() => priceRangeByConfig(packagePrices), [packagePrices]);
+  const groupSize = groupSizeForGuests(guestsCount);
+  const currentPackagePrices = useMemo(
+    () => packagePrices.filter((row) => row.group_size === groupSize),
+    [packagePrices, groupSize],
+  );
+  const priceRanges = useMemo(
+    () => priceRangeByConfig(currentPackagePrices),
+    [currentPackagePrices],
+  );
   const perPersonByConfig = useMemo(
-    () => perPersonStayTotalByConfig(packagePrices, checkIn, checkOut),
-    [packagePrices, checkIn, checkOut],
+    () => perPersonStayTotalByConfig(currentPackagePrices, checkIn, checkOut),
+    [currentPackagePrices, checkIn, checkOut],
   );
   const selectionResult = useMemo(
     () => computeSelectionLines(perPersonByConfig, selections),
@@ -112,6 +129,7 @@ export function ReserveForm({
   const grandTotal = (selectionResult?.total ?? 0) + petFee;
   const season = useMemo(() => summarizeSeasonFromRange(checkIn, checkOut), [checkIn, checkOut]);
   const holidayNotes = useMemo(() => holidaysInRange(checkIn, checkOut), [checkIn, checkOut]);
+  const saturdaySmallGroup = guestsCount < MIN_SATURDAY_GUESTS && hasSaturdayNight(checkIn, checkOut);
 
   const nights = useMemo(() => {
     if (!checkIn || !checkOut || checkOut <= checkIn) return 0;
@@ -452,7 +470,8 @@ export function ReserveForm({
         }}
       >
         <ul className="text-black/75 space-y-1">
-          <li>• <strong className="text-black">4인 이상 숙박 패키지</strong>만 온라인 예약이 가능합니다.</li>
+          <li>• 토요일을 제외한 일정은 <strong className="text-black">2인부터 온라인 예약</strong>이 가능합니다.</li>
+          <li>• <strong className="text-black">토요일 4인 미만 예약</strong>은 전화로 문의 부탁드립니다.</li>
           <li>• 인원별로 각자 다른 패키지를 선택할 수 있습니다.</li>
           <li>• <strong className="text-black">객실 배정은 관리자 확정 시</strong> 이루어지며, 대표자 연락처로 안내드립니다.</li>
           <li>• 숙박 없이 액티비티만 이용하실 예정이라면 별도 예약 없이 방문해주세요.</li>
@@ -549,6 +568,7 @@ export function ReserveForm({
             </div>
             <p className="text-black/55 mt-1.5" style={{ fontSize: "11px" }}>
               최소 {MIN_GUESTS}명 · 최대 {MAX_GUESTS}명
+              {saturdaySmallGroup ? " · 토요일 4인 미만 전화 문의" : ""}
             </p>
           </div>
 
@@ -973,7 +993,9 @@ export function ReserveForm({
           {submitting
             ? "처리 중..."
             : availabilityBlocked
-              ? "선택한 일정 예약 마감"
+              ? availability.state === "unavailable" && availability.reason.includes("전화")
+                ? "전화 문의 필요"
+                : "선택한 일정 예약 마감"
               : availability.state === "loading"
                 ? "일정 확인 중..."
                 : !quantityMatch
