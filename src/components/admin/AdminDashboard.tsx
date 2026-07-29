@@ -133,16 +133,10 @@ export function AdminDashboard({
     let todayCheckIn = 0;
     let weekCheckIn = 0;
     let monthRevenue = 0;
-    let monthOnline = 0;
-    let monthManual = 0;
     for (const r of rows) {
       if (r.status === "cancelled") continue;
       if (r.check_in === today) todayCheckIn += 1;
       if (r.check_in >= today && r.check_in < weekEnd) weekCheckIn += 1;
-      if (r.check_in >= monthStart) {
-        if (r.source === "online") monthOnline += 1;
-        else monthManual += 1;
-      }
       if (r.status === "confirmed" && r.check_in >= monthStart) monthRevenue += r.total_price;
     }
     return {
@@ -150,8 +144,6 @@ export function AdminDashboard({
       todayCheckIn,
       weekCheckIn,
       monthRevenue,
-      monthOnline,
-      monthManual,
     };
   }, [rows, counts.pending, today, weekEnd, monthStart]);
 
@@ -463,7 +455,7 @@ export function AdminDashboard({
       </header>
 
       {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-2 md:mb-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-4 md:mb-6">
         <KpiCard
           label="확정 대기"
           value={kpi.pending}
@@ -474,25 +466,6 @@ export function AdminDashboard({
         <KpiCard label="오늘 체크인" value={kpi.todayCheckIn} unit="건" accent="#00d5e6" />
         <KpiCard label="이번 주 체크인" value={kpi.weekCheckIn} unit="건" accent="#a1a1aa" />
         <KpiCard label="이번 달 확정 매출" value={`₩${wonShort(kpi.monthRevenue)}`} accent="#00d5e6" />
-      </div>
-
-      {/* Source stats (이번 달 접수 · 출처별) */}
-      <div
-        className="mb-4 md:mb-6 flex items-center gap-3 flex-wrap p-2.5 md:p-3"
-        style={{
-          backgroundColor: "#14171c",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: "4px",
-        }}
-      >
-        <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)" }}>
-          이번 달 출처
-        </span>
-        <SourcePill label="온라인" value={kpi.monthOnline} accent="#00d5e6" />
-        <SourcePill label="수기" value={kpi.monthManual} accent="#a78bfa" />
-        <span style={{ marginLeft: "auto", fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
-          취소 제외 · 체크인 기준
-        </span>
       </div>
 
       {/* Toolbar */}
@@ -700,7 +673,7 @@ function ByDateGridView({
   if (entries.length === 0) return <EmptyState />;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       {pastEntries.length > 0 && (
         <button
           type="button"
@@ -740,16 +713,21 @@ function ByDateGridView({
           <section
             key={date}
             style={{
-              backgroundColor: "#14171c",
-              border: `1px solid ${isToday ? "rgba(0,213,230,0.35)" : "rgba(255,255,255,0.08)"}`,
+              backgroundColor: "#12151a",
+              border: `1px solid ${isToday ? "rgba(0,213,230,0.45)" : "rgba(255,255,255,0.12)"}`,
+              borderLeft: `4px solid ${isToday ? "#00d5e6" : "rgba(255,255,255,0.28)"}`,
               borderRadius: "4px",
               overflow: "hidden",
+              boxShadow: isToday
+                ? "0 0 0 1px rgba(0,213,230,0.08), 0 12px 26px rgba(0,0,0,0.24)"
+                : "0 10px 22px rgba(0,0,0,0.2)",
             }}
           >
             <div
               style={{
-                padding: "10px 12px",
-                background: "transparent",
+                padding: "11px 12px 10px",
+                backgroundColor: isToday ? "rgba(0,213,230,0.08)" : "rgba(255,255,255,0.035)",
+                borderBottom: "1px solid rgba(255,255,255,0.1)",
                 color: "inherit",
               }}
             >
@@ -871,10 +849,10 @@ function ByDateGridView({
                 style={{
                   borderTop: "1px solid rgba(255,255,255,0.08)",
                   padding: "8px 12px",
-                  backgroundColor: "rgba(0,194,209,0.06)",
+                  backgroundColor: "rgba(52,211,153,0.08)",
                 }}
               >
-                <div style={{ fontSize: "11px", fontWeight: 800, color: "#00d5e6", marginBottom: "5px" }}>
+                <div style={{ fontSize: "11px", fontWeight: 800, color: "#34d399", marginBottom: "5px" }}>
                   당일 패키지
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -885,11 +863,11 @@ function ByDateGridView({
                       onClick={() => tableProps.onOpenDetail(r)}
                       style={{
                         padding: "3px 7px",
-                        border: "1px solid rgba(0,213,230,0.25)",
+                        border: "1px solid rgba(52,211,153,0.32)",
                         borderRadius: "2px",
                         fontSize: "11px",
-                        color: "rgba(255,255,255,0.82)",
-                        backgroundColor: "transparent",
+                        color: "#d1fae5",
+                        backgroundColor: "rgba(52,211,153,0.05)",
                         cursor: "pointer",
                       }}
                     >
@@ -1129,13 +1107,18 @@ function MobileReservationCard({
               {STATUS_LABEL[row.status]}
             </span>
             {row.reservation_type === "day_use" && (
-              <span style={{ fontSize: "10px", fontWeight: 800, color: "#00d5e6" }}>당일</span>
+              <span style={{ fontSize: "10px", fontWeight: 800, color: "#34d399" }}>당일</span>
             )}
             {isToday && <span style={{ fontSize: "10px", fontWeight: 800, color: "#00d5e6" }}>오늘</span>}
           </div>
           <div style={{ marginTop: "4px", fontSize: "12px", color: "rgba(255,255,255,0.65)" }}>
             {dateText} · {row.guests_count}명 · {reservationRoomTitle(row)}
           </div>
+          {row.representative?.phone && (
+            <div style={{ marginTop: "3px", fontSize: "12px", color: "rgba(255,255,255,0.72)" }}>
+              {row.representative.phone}
+            </div>
+          )}
           <div
             style={{
               marginTop: "5px",
@@ -1355,9 +1338,18 @@ function ExpandedDetail({
         <MiniField label="접수일시">
           {new Date(row.created_at).toLocaleString("ko-KR")}
         </MiniField>
+        <MiniField label="대표 연락처">
+          {row.representative?.phone ? (
+            <a href={`tel:${row.representative.phone.replace(/\s+/g, "")}`} style={{ color: "#00d5e6", fontWeight: 800 }}>
+              {row.representative.phone}
+            </a>
+          ) : (
+            <Dim>-</Dim>
+          )}
+        </MiniField>
         <MiniField label="출처">
             {row.reservation_type === "day_use" && (
-              <span style={{ marginRight: "6px", color: "#00d5e6", fontWeight: 800 }}>당일</span>
+              <span style={{ marginRight: "6px", color: "#34d399", fontWeight: 800 }}>당일</span>
             )}
             {row.source === "manual" ? (
             <>
@@ -1713,36 +1705,6 @@ function KpiCard({
         )}
       </p>
     </div>
-  );
-}
-
-function SourcePill({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: number;
-  accent: string;
-}) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "baseline",
-        gap: "6px",
-        padding: "4px 10px",
-        backgroundColor: "rgba(255,255,255,0.03)",
-        border: `1px solid ${accent}55`,
-        borderRadius: "999px",
-        fontSize: "12px",
-      }}
-    >
-      <span style={{ color: accent, fontWeight: 700 }}>●</span>
-      <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600 }}>{label}</span>
-      <span style={{ color: "#fff", fontWeight: 800 }}>{value}</span>
-      <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "11px" }}>건</span>
-    </span>
   );
 }
 

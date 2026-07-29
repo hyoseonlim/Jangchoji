@@ -17,6 +17,13 @@ function badRequest(message: string) {
 }
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const WEEKDAY_KO = ["일", "월", "화", "수", "목", "금", "토"] as const;
+
+function formatDateWithDay(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  const weekday = WEEKDAY_KO[new Date(year, month - 1, day).getDay()];
+  return `${date} (${weekday})`;
+}
 
 function parseSelections(v: unknown): PackageSelections | null {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
@@ -125,8 +132,12 @@ export async function POST(req: Request) {
     const priceStr = new Intl.NumberFormat("ko-KR").format(quote.total);
     const petLine = petCount > 0 ? `반려견: ${petCount}마리 (+₩${new Intl.NumberFormat("ko-KR").format(quote.petFee)})\n` : "";
     const memoLine = memo && memo.trim().length > 0 ? `요청사항: ${memo.trim()}\n` : "";
+    const dateLine =
+      reservationType === "day_use"
+        ? formatDateWithDay(reservation.check_in)
+        : `${formatDateWithDay(reservation.check_in)} ~ ${formatDateWithDay(reservation.check_out)}`;
     await notifyAdmin(
-      `날짜: ${reservation.check_in} ~ ${reservation.check_out}\n` +
+      `날짜: ${dateLine}\n` +
       `구분: ${reservationType === "day_use" ? "당일 패키지" : "숙박 패키지"}\n` +
       `예약자: ${rep?.name ?? "-"}\n` +
       `인원: ${reservation.guests_count}명\n` +

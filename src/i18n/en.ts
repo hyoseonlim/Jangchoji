@@ -221,8 +221,8 @@ export const en: Dictionary = {
     hours: {
       title: "Water leisure operating hours",
       lines: [
-        "Weekends · Peak season: 09:00 – 18:00",
-        "Off-peak weekdays: 10:00 – 18:00",
+        "Operating hours: 09:00 – 18:00",
+        "Lunch break: 13:00 – 14:00",
       ],
       note: "BBQ operates after water leisure closes (from 19:00).",
     },
@@ -792,9 +792,9 @@ export const en: Dictionary = {
     contactTitle: "Contact & directions",
     postalPrefix: "Postal code",
     hoursTitle: "Hours",
-    hoursWeekday: "Weekdays 09:00 – 18:00",
-    hoursWeekend: "Weekends & holidays 08:00 – 20:00",
-    hoursPeak: "Peak season (Jul–Aug) 08:00 – 21:00",
+    hoursWeekday: "Operating hours 09:00 – 18:00",
+    hoursWeekend: "Lunch break 13:00 – 14:00",
+    hoursPeak: "BBQ starts from 19:00",
     reserve: "Reserve →",
     businessLabel: "Business:",
     ownerLabel: "Owner:",

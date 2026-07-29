@@ -220,8 +220,8 @@ export const ko = {
     hours: {
       title: "빠지 수상레저 운영시간",
       lines: [
-        "주말 · 성수기: 09:00 – 18:00",
-        "비수기 평일: 10:00 – 18:00",
+        "영업시간: 09:00 – 18:00",
+        "점심시간: 13:00 – 14:00",
       ],
       note: "바베큐는 빠지 수상레저 영업 종료 후 운영됩니다 (19:00~).",
     },
@@ -791,9 +791,9 @@ export const ko = {
     contactTitle: "연락처 & 찾아오시는 길",
     postalPrefix: "우편번호",
     hoursTitle: "운영 시간",
-    hoursWeekday: "평일 09:00 – 18:00",
-    hoursWeekend: "주말·공휴일 08:00 – 20:00",
-    hoursPeak: "성수기(7~8월) 08:00 – 21:00",
+    hoursWeekday: "영업시간 09:00 – 18:00",
+    hoursWeekend: "점심시간 13:00 – 14:00",
+    hoursPeak: "바베큐는 19:00부터 운영",
     reserve: "예약하기 →",
     businessLabel: "상호:",
     ownerLabel: "대표:",
