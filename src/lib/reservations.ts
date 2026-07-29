@@ -40,6 +40,7 @@ export type GuestInput = { name: string; phone?: string; isRepresentative: boole
 export const DEFAULT_GROUP_SIZE: GroupSize = "4";
 export const MIN_GUESTS = 2;
 export const MIN_SATURDAY_GUESTS = 4;
+export const MIN_INBOAT_GUESTS = 4;
 // 8인실이 물리적으로 수용 가능한 최대 인원 (11인 이상은 단일 예약 불가)
 export const MAX_GUESTS_PER_RESERVATION = 10;
 export const SATURDAY_SMALL_GROUP_MESSAGE =
@@ -91,6 +92,7 @@ export type CreateReservationInput = {
   memo?: string;
   depositorName?: string;
   paymentConfirmed: boolean;
+  refundPolicyAgreed: boolean;
 };
 
 export type CreateDayUseReservationInput = {
@@ -101,6 +103,7 @@ export type CreateDayUseReservationInput = {
   memo?: string;
   depositorName?: string;
   paymentConfirmed: boolean;
+  policyAgreed: boolean;
 };
 
 // 관리자 수기 등록 · 편집 공용 입력. 온라인과 달리 :
@@ -228,6 +231,9 @@ export function quoteDayUseReservation(
   }
   const result = computeDayUseLines(packageSelections);
   if (!result) throw new Error("최소 1개 이상의 당일 패키지를 선택해주세요.");
+  if ((packageSelections.day_inboat ?? 0) > 0 && (packageSelections.day_inboat ?? 0) < MIN_INBOAT_GUESTS) {
+    throw new Error("럭셔리 인보트 보팅은 4인 이상부터 선택 가능합니다.");
+  }
   if (result.totalQuantity !== guestsCount) {
     throw new Error(
       `선택한 패키지 수량(${result.totalQuantity}명)이 예약 인원(${guestsCount}명)과 일치해야 합니다.`,
@@ -348,6 +354,9 @@ export async function createReservation(input: CreateReservationInput) {
   if (!input.paymentConfirmed) {
     throw new Error("입금 확인에 체크한 뒤 예약을 완료할 수 있습니다.");
   }
+  if (!input.refundPolicyAgreed) {
+    throw new Error("숙박 패키지 취소·환불 규정 동의가 필요합니다.");
+  }
   if (input.guests.length === 0) {
     throw new Error("예약자 정보를 1명 이상 입력해주세요.");
   }
@@ -426,6 +435,9 @@ export async function createReservation(input: CreateReservationInput) {
 export async function createDayUseReservation(input: CreateDayUseReservationInput) {
   if (!input.paymentConfirmed) {
     throw new Error("입금 확인에 체크한 뒤 예약을 완료할 수 있습니다.");
+  }
+  if (!input.policyAgreed) {
+    throw new Error("당일 패키지 예약 및 환불 규정 동의가 필요합니다.");
   }
   if (input.guests.length === 0) {
     throw new Error("예약자 정보를 1명 이상 입력해주세요.");

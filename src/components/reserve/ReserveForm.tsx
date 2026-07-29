@@ -28,8 +28,43 @@ const MIN_GUESTS = 2;
 const MIN_DAY_USE_GUESTS = 1;
 const DEFAULT_GUESTS = 4;
 const MIN_SATURDAY_GUESTS = 4;
+const MIN_INBOAT_GUESTS = 4;
 const MAX_GUESTS = 10;
 const MAX_DAY_USE_BBQ_GUESTS = 20;
+const STAY_REFUND_POLICY_ITEMS = [
+  "패키지 예약금 환불은 일체 불가하며, 예약일 변경은 이용일 7일 전까지 가능합니다.",
+  "예약 신청 내용 및 예약일 변경 시 위약금 20%가 추가되며, 패키지와 객실은 별도로 적용됩니다.",
+  "우천으로 인한 패키지 취소는 불가능합니다.",
+  "개인 사정으로 객실 예약일 변경을 원하실 경우 객실 취소 수수료 규정이 적용됩니다.",
+];
+const STAY_ROOM_CANCEL_FEES = [
+  ["객실 기본", "30% 취소 수수료 부과"],
+  ["객실 이용일 D-14", "40% 취소 수수료 부과"],
+  ["객실 이용일 D-10", "50% 취소 수수료 부과"],
+  ["객실 이용일 D-9", "60% 취소 수수료 부과"],
+  ["객실 이용일 D-8", "70% 취소 수수료 부과"],
+  ["객실 이용일 D-7", "환불 불가"],
+] as const;
+const DAY_USE_REFUND_POLICY_ITEMS = [
+  "예약과 동시에 이용 인원이 확정되어 다른 고객의 예약이 제한됩니다. 신중한 예약을 부탁드립니다.",
+  "반복적인 예약 취소가 빈번하여 취소하실 경우 기본 취소 수수료 10%가 추가로 부과됩니다.",
+  "태풍, 강풍, 낙뢰, 댐 방류 등으로 수상레저 운영이 불가능한 경우 관련 규정에 따라 환불 또는 예약 변경을 도와드립니다.",
+  "비가 내리거나 흐린 날씨 등 단순 기상 변화만으로는 정상 운영이 가능한 경우가 많아 100% 환불은 어렵습니다.",
+  "모든 고객에게 공정한 예약 서비스를 제공하기 위해 환불 규정을 동일하게 적용합니다.",
+];
+const DAY_USE_CANCEL_FEES = [
+  ["이용 10일 전", "90% 환불"],
+  ["이용 9일 전", "80% 환불"],
+  ["이용 8일 전", "70% 환불"],
+  ["이용 7일 전", "60% 환불"],
+  ["이용 6일 전", "50% 환불"],
+  ["이용 5일 전", "40% 환불"],
+  ["이용 4일 전", "30% 환불"],
+  ["이용 3일 전", "20% 환불"],
+  ["이용 2일 전", "10% 환불"],
+  ["이용 1일 전", "환불 불가"],
+  ["이용 당일", "환불 불가"],
+] as const;
 
 type Guest = { name: string; phone: string; isRepresentative: boolean };
 type ReservationMode = "stay" | "day_use";
@@ -104,6 +139,8 @@ export function ReserveForm({
   const [memo, setMemo] = useState("");
   const [phoneConfirmed, setPhoneConfirmed] = useState(false);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [refundPolicyAgreed, setRefundPolicyAgreed] = useState(false);
+  const [dayUsePolicyAgreed, setDayUsePolicyAgreed] = useState(false);
   const [depositorName, setDepositorName] = useState("");
   const [depositorEdited, setDepositorEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -146,6 +183,8 @@ export function ReserveForm({
     hasSaturdayNight(checkIn, checkOut);
   const dayUseBbqSelected = reservationMode === "day_use" && (selections.day_bbq ?? 0) > 0;
   const dayUseBbqBlocked = dayUseBbqSelected && checkIn <= todayISO();
+  const inboatQuantity = reservationMode === "day_use" ? selections.day_inboat ?? 0 : 0;
+  const inboatMinBlocked = inboatQuantity > 0 && inboatQuantity < MIN_INBOAT_GUESTS;
   const minGuestsForMode = reservationMode === "day_use" ? MIN_DAY_USE_GUESTS : MIN_GUESTS;
 
   const nights = useMemo(() => {
@@ -226,6 +265,9 @@ export function ReserveForm({
         next[key] = cur - take;
         overflow -= take;
       }
+      if (reservationMode === "day_use" && (next.day_inboat ?? 0) > 0 && (next.day_inboat ?? 0) < MIN_INBOAT_GUESTS) {
+        delete next.day_inboat;
+      }
       return next;
     });
   }, [guestsCount, reservationMode]);
@@ -247,6 +289,8 @@ export function ReserveForm({
     setSelections(EMPTY_SELECTIONS);
     setPetCount(0);
     setGuestsCount((prev) => Math.max(mode === "day_use" ? MIN_DAY_USE_GUESTS : MIN_GUESTS, prev));
+    if (mode !== "stay") setRefundPolicyAgreed(false);
+    if (mode !== "day_use") setDayUsePolicyAgreed(false);
     setSubmitError(null);
   }
 
@@ -291,7 +335,17 @@ export function ReserveForm({
           0,
         );
       const maxForThis = Math.max(0, guestsCount - otherSum);
-      const next = Math.min(maxForThis, Math.max(0, cur + delta));
+      let next = Math.min(maxForThis, Math.max(0, cur + delta));
+      if (reservationMode === "day_use" && key === "day_inboat") {
+        if (cur === 0 && delta > 0) {
+          if (maxForThis < MIN_INBOAT_GUESTS) return prev;
+          next = MIN_INBOAT_GUESTS;
+        } else if (cur <= MIN_INBOAT_GUESTS && delta < 0) {
+          next = 0;
+        } else if (next > 0 && next < MIN_INBOAT_GUESTS) {
+          next = MIN_INBOAT_GUESTS;
+        }
+      }
       if (next === cur) return prev;
       const merged = { ...prev, [key]: next };
       if (next === 0) delete merged[key];
@@ -312,6 +366,18 @@ export function ReserveForm({
     }
     if (dayUseBbqBlocked) {
       setSubmitError("당일 BBQ는 이용일 하루 전까지 예약이 필요합니다.");
+      return;
+    }
+    if (inboatMinBlocked) {
+      setSubmitError("럭셔리 인보트 보팅은 4인 이상부터 선택 가능합니다.");
+      return;
+    }
+    if (reservationMode === "stay" && !refundPolicyAgreed) {
+      setSubmitError("숙박 패키지 취소·환불 규정을 확인 후 동의해주세요.");
+      return;
+    }
+    if (reservationMode === "day_use" && !dayUsePolicyAgreed) {
+      setSubmitError("당일 패키지 예약 및 환불 규정을 확인 후 동의해주세요.");
       return;
     }
     if (totalQuantity !== guestsCount) {
@@ -342,6 +408,8 @@ export function ReserveForm({
           memo: memo.trim() || undefined,
           depositorName: depositorName.trim() || undefined,
           paymentConfirmed,
+          refundPolicyAgreed: reservationMode === "stay" ? refundPolicyAgreed : undefined,
+          dayUsePolicyAgreed: reservationMode === "day_use" ? dayUsePolicyAgreed : undefined,
         }),
       });
       const json = await res.json();
@@ -643,9 +711,6 @@ export function ReserveForm({
       <Section title={reservationMode === "stay" ? "2. 인원 및 반려견 동반" : "2. 인원"}>
         <div className={`grid grid-cols-1 ${reservationMode === "stay" ? "sm:grid-cols-2" : ""} gap-4`}>
           <div className="p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
-            <span className="block text-black/70 mb-2" style={{ fontSize: "12px", fontWeight: 600 }}>
-              숙박 인원
-            </span>
             <div className="inline-flex items-center gap-2">
               <button
                 type="button"
@@ -738,7 +803,9 @@ export function ReserveForm({
                 ? perPersonByConfig[key]
                 : DAY_USE_PRICES[key as keyof typeof DAY_USE_PRICES];
             const range = priceRanges[key];
-            const disabled = remainingQuantity === 0 && quantity === 0;
+            const isInboat = reservationMode === "day_use" && key === "day_inboat";
+            const inboatStartDisabled = isInboat && quantity === 0 && remainingQuantity < MIN_INBOAT_GUESTS;
+            const disabled = (remainingQuantity === 0 && quantity === 0) || inboatStartDisabled;
             const active = quantity > 0;
             return (
               <li
@@ -778,6 +845,11 @@ export function ReserveForm({
                     {quantity > 0 && perPerson != null && (
                       <span className="ml-2 text-black" style={{ fontWeight: 700 }}>
                         · 소계 {won(perPerson * quantity)}
+                      </span>
+                    )}
+                    {isInboat && (
+                      <span className="block text-black/45 mt-0.5">
+                        4인 이상부터 선택 가능
                       </span>
                     )}
                   </div>
@@ -1033,6 +1105,120 @@ export function ReserveForm({
         </div>
       </div>
 
+      {reservationMode === "stay" && (
+        <div
+          className="mt-6 p-5 md:p-6"
+          style={{
+            backgroundColor: "#fff",
+            border: "1px solid rgba(0,0,0,0.14)",
+            borderRadius: "3px",
+          }}
+        >
+          <p className="text-black" style={{ fontSize: "14px", fontWeight: 850, letterSpacing: "-0.01em" }}>
+            숙박 패키지 취소·환불 규정
+          </p>
+          <ul className="mt-3 space-y-1.5 text-black/72" style={{ fontSize: "13px", lineHeight: 1.65 }}>
+            {STAY_REFUND_POLICY_ITEMS.map((item) => (
+              <li key={item} className="flex items-start gap-2">
+                <span style={{ color: "#00C2D1", flexShrink: 0 }}>•</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.08)", borderRadius: "2px" }}>
+            {STAY_ROOM_CANCEL_FEES.map(([when, fee], idx) => (
+              <div
+                key={when}
+                className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
+                style={{
+                  borderTop: idx === 0 ? "none" : "1px solid rgba(0,0,0,0.07)",
+                  fontSize: "12px",
+                }}
+              >
+                <div className="px-3 py-2 text-black/58" style={{ backgroundColor: "rgba(0,0,0,0.035)", fontWeight: 800 }}>
+                  {when}
+                </div>
+                <div className="px-3 py-2 text-black" style={{ fontWeight: 850 }}>
+                  {fee}
+                </div>
+              </div>
+            ))}
+          </div>
+          <label className="mt-4 flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={refundPolicyAgreed}
+              onChange={(e) => setRefundPolicyAgreed(e.target.checked)}
+              className="mt-0.5"
+              required
+            />
+            <span className="text-black" style={{ fontSize: "13px", lineHeight: 1.6, fontWeight: 700 }}>
+              위 취소·환불 규정을 확인했으며 이에 동의합니다.
+            </span>
+          </label>
+        </div>
+      )}
+
+      {reservationMode === "day_use" && (
+        <div
+          className="mt-6 p-5 md:p-6"
+          style={{
+            backgroundColor: "#fff",
+            border: "1px solid rgba(0,0,0,0.14)",
+            borderRadius: "3px",
+          }}
+        >
+          <p className="text-black" style={{ fontSize: "14px", fontWeight: 850, letterSpacing: "-0.01em" }}>
+            당일 패키지 예약 및 환불 규정
+          </p>
+          <ul className="mt-3 space-y-1.5 text-black/72" style={{ fontSize: "13px", lineHeight: 1.65 }}>
+            {DAY_USE_REFUND_POLICY_ITEMS.map((item) => (
+              <li key={item} className="flex items-start gap-2">
+                <span style={{ color: "#00C2D1", flexShrink: 0 }}>•</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.08)", borderRadius: "2px" }}>
+            {DAY_USE_CANCEL_FEES.map(([when, refund], idx) => (
+              <div
+                key={when}
+                className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
+                style={{
+                  borderTop: idx === 0 ? "none" : "1px solid rgba(0,0,0,0.07)",
+                  fontSize: "12px",
+                }}
+              >
+                <div className="px-3 py-2 text-black/58" style={{ backgroundColor: "rgba(0,0,0,0.035)", fontWeight: 800 }}>
+                  {when}
+                </div>
+                <div
+                  className="px-3 py-2"
+                  style={{
+                    color: refund === "환불 불가" ? "#dc2626" : "#111",
+                    fontWeight: 850,
+                  }}
+                >
+                  {refund}
+                </div>
+              </div>
+            ))}
+          </div>
+          <label className="mt-4 flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={dayUsePolicyAgreed}
+              onChange={(e) => setDayUsePolicyAgreed(e.target.checked)}
+              className="mt-0.5"
+              required
+            />
+            <span className="text-black" style={{ fontSize: "13px", lineHeight: 1.6, fontWeight: 700 }}>
+              위 예약 및 환불 규정을 확인했으며 이에 동의합니다.
+            </span>
+          </label>
+        </div>
+      )}
+
       <div
         className="mt-6 p-5 md:p-6"
         style={{
@@ -1127,8 +1313,11 @@ export function ReserveForm({
             submitting ||
             !phoneConfirmed ||
             !paymentConfirmed ||
+            (reservationMode === "stay" && !refundPolicyAgreed) ||
+            (reservationMode === "day_use" && !dayUsePolicyAgreed) ||
             !quantityMatch ||
             dayUseBbqBlocked ||
+            inboatMinBlocked ||
             grandTotal <= 0 ||
             availability.state !== "ok"
           }
@@ -1142,8 +1331,11 @@ export function ReserveForm({
               submitting ||
                 !phoneConfirmed ||
                 !paymentConfirmed ||
+                (reservationMode === "stay" && !refundPolicyAgreed) ||
+                (reservationMode === "day_use" && !dayUsePolicyAgreed) ||
                 !quantityMatch ||
                 dayUseBbqBlocked ||
+                inboatMinBlocked ||
                 grandTotal <= 0 ||
                 availability.state !== "ok"
                 ? 0.5
@@ -1152,8 +1344,11 @@ export function ReserveForm({
               submitting ||
                 !phoneConfirmed ||
                 !paymentConfirmed ||
+                (reservationMode === "stay" && !refundPolicyAgreed) ||
+                (reservationMode === "day_use" && !dayUsePolicyAgreed) ||
                 !quantityMatch ||
                 dayUseBbqBlocked ||
+                inboatMinBlocked ||
                 grandTotal <= 0 ||
                 availability.state !== "ok"
                 ? "not-allowed"
@@ -1172,11 +1367,17 @@ export function ReserveForm({
                   ? `패키지 ${remainingQuantity > 0 ? `${remainingQuantity}명 더 선택` : `${-remainingQuantity}명 초과`}`
                   : dayUseBbqBlocked
                     ? "BBQ 하루 전 예약 필요"
-                    : !phoneConfirmed
-                      ? "전화번호 확인 체크 필요"
-                      : !paymentConfirmed
-                        ? "입금 확인 체크 필요"
-                        : "예약 신청"}
+                    : inboatMinBlocked
+                      ? "인보트 4인 이상 선택 필요"
+                      : reservationMode === "stay" && !refundPolicyAgreed
+                        ? "취소·환불 규정 동의 필요"
+                        : reservationMode === "day_use" && !dayUsePolicyAgreed
+                          ? "예약·환불 규정 동의 필요"
+                          : !phoneConfirmed
+                            ? "전화번호 확인 체크 필요"
+                            : !paymentConfirmed
+                              ? "입금 확인 체크 필요"
+                              : "예약 신청"}
         </button>
       </div>
     </form>

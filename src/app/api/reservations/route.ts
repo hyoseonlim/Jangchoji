@@ -3,6 +3,7 @@ import {
   createDayUseReservation,
   createReservation,
   MIN_GUESTS,
+  MIN_INBOAT_GUESTS,
   validateOnlineGuestPolicy,
 } from "@/lib/reservations";
 import { isConfigKey, type PackageSelections } from "@/lib/pricing";
@@ -51,7 +52,10 @@ export async function POST(req: Request) {
   if (!selections || Object.keys(selections).length === 0) {
     return badRequest("패키지를 1개 이상 선택해주세요.");
   }
-  const totalQuantity = Object.values(selections).reduce((s, n) => s + (n ?? 0), 0);
+  const totalQuantity = Object.entries(selections).reduce(
+    (s, [key, n]) => (key === "day_bbq" ? s : s + (n ?? 0)),
+    0,
+  );
 
   if (
     typeof b.guestsCount !== "number" ||
@@ -65,6 +69,9 @@ export async function POST(req: Request) {
       `선택한 패키지 수량(${totalQuantity}명)이 예약 인원(${b.guestsCount}명)과 일치해야 합니다.`,
     );
   }
+  if (reservationType === "day_use" && (selections.day_inboat ?? 0) > 0 && (selections.day_inboat ?? 0) < MIN_INBOAT_GUESTS) {
+    return badRequest("럭셔리 인보트 보팅은 4인 이상부터 선택 가능합니다.");
+  }
   if (typeof b.checkIn !== "string" || !ISO_DATE_RE.test(b.checkIn)) return badRequest("checkIn 형식 오류");
   if (reservationType === "stay") {
     if (typeof b.checkOut !== "string" || !ISO_DATE_RE.test(b.checkOut)) return badRequest("checkOut 형식 오류");
@@ -74,6 +81,12 @@ export async function POST(req: Request) {
   }
   if (!Array.isArray(b.guests)) return badRequest("guests 형식 오류");
   if (b.paymentConfirmed !== true) return badRequest("입금 확인 체크가 필요합니다.");
+  if (reservationType === "stay" && b.refundPolicyAgreed !== true) {
+    return badRequest("숙박 패키지 취소·환불 규정 동의가 필요합니다.");
+  }
+  if (reservationType === "day_use" && b.dayUsePolicyAgreed !== true) {
+    return badRequest("당일 패키지 예약 및 환불 규정 동의가 필요합니다.");
+  }
   const memo = typeof b.memo === "string" ? b.memo.slice(0, 1000) : undefined;
   const depositorName =
     typeof b.depositorName === "string" && b.depositorName.trim().length > 0
@@ -115,6 +128,7 @@ export async function POST(req: Request) {
             memo,
             depositorName,
             paymentConfirmed: true,
+            policyAgreed: true,
           })
         : await createReservation({
             packageSelections: selections,
@@ -126,6 +140,7 @@ export async function POST(req: Request) {
             memo,
             depositorName,
             paymentConfirmed: true,
+            refundPolicyAgreed: true,
           });
 
     const rep = guests.find((g) => g.isRepresentative);
