@@ -119,16 +119,19 @@ export function ReserveForm({
   dict,
   locale,
   packagePrices,
+  initialMode = "stay",
 }: {
   dict: Dictionary;
   locale: Locale;
   packagePrices: PackagePriceRow[];
+  initialMode?: ReservationMode;
 }) {
   void dict;
 
-  const [checkIn, setCheckIn] = useState(() => todayISO(7));
-  const [checkOut, setCheckOut] = useState(() => todayISO(8));
-  const [reservationMode, setReservationMode] = useState<ReservationMode>("stay");
+  const dayUseInitial = initialMode === "day_use";
+  const [checkIn, setCheckIn] = useState(() => todayISO(dayUseInitial ? 0 : 7));
+  const [checkOut, setCheckOut] = useState(() => todayISO(dayUseInitial ? 0 : 8));
+  const [reservationMode, setReservationMode] = useState<ReservationMode>(initialMode);
   const [guestsCount, setGuestsCount] = useState(DEFAULT_GUESTS);
   const [petCount, setPetCount] = useState(0);
   const [availability, setAvailability] = useState<Availability>({ state: "idle" });

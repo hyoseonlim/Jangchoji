@@ -117,6 +117,43 @@ function buildFaqJsonLd(dict: ReturnType<typeof getDictionary>) {
   };
 }
 
+// 네이버·구글 검색 결과의 서브링크(사이트링크) 노출을 유도하기 위한 신호.
+// 최종 노출 여부·문구는 검색엔진이 자동 결정하며, 여기서 지정한 대로 100% 표시되지는 않음.
+function buildSiteNavigationJsonLd(locale: Locale, siteUrl: string | undefined) {
+  const base = siteUrl ? siteUrl.replace(/\/$/, "") : "";
+  const home = `${base}/${locale}`;
+  const items = [
+    { name: "숙박패키지예약", url: `${base}/${locale}/reserve` },
+    { name: "당일예약", url: `${base}/${locale}/reserve?mode=day_use` },
+    { name: "펜션 안내", url: `${home}#relax-dine` },
+    { name: "패키지 안내", url: `${home}#packages` },
+    { name: "수상레저", url: `${home}#activities` },
+    { name: "요금안내", url: `${home}#pricing` },
+  ];
+  return items.map((item, idx) => ({
+    "@context": "https://schema.org",
+    "@type": "SiteNavigationElement",
+    position: idx + 1,
+    name: item.name,
+    url: item.url,
+  }));
+}
+
+function buildWebSiteJsonLd(
+  dict: ReturnType<typeof getDictionary>,
+  locale: Locale,
+  siteUrl: string | undefined,
+) {
+  const base = siteUrl ? siteUrl.replace(/\/$/, "") : "";
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: dict.meta.siteName,
+    url: `${base}/${locale}`,
+    inLanguage: locale === "ko" ? "ko-KR" : "en-US",
+  };
+}
+
 export default async function LocaleLayout({
   children,
   params,
@@ -130,6 +167,8 @@ export default async function LocaleLayout({
   const dict = getDictionary(locale as Locale);
   const localBusiness = buildLocalBusinessJsonLd(dict);
   const faq = buildFaqJsonLd(dict);
+  const website = buildWebSiteJsonLd(dict, locale as Locale, SITE_URL);
+  const siteNavigation = buildSiteNavigationJsonLd(locale as Locale, SITE_URL);
 
   return (
     <html lang={dict.htmlLang} className={`${notoSansKR.variable} ${inter.variable}`}>
@@ -137,6 +176,14 @@ export default async function LocaleLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusiness) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(website) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteNavigation) }}
         />
         <script
           type="application/ld+json"
