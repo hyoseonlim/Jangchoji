@@ -6,6 +6,7 @@ import {
   transitionReservation,
   type ReservationStatus,
 } from "@/lib/reservations";
+import { sendReservationConfirmSms } from "@/lib/reservation-notify";
 import { isRoomKey } from "@/lib/rooms";
 
 export const runtime = "nodejs";
@@ -45,6 +46,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         username: admin.username,
         displayName: admin.displayName,
       });
+      void sendReservationConfirmSms(id);
       return NextResponse.json({ ok: true });
     }
 
@@ -71,6 +73,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     const updated = await transitionReservation(id, next, admin.username, admin.displayName);
+    if (next === "confirmed") {
+      void sendReservationConfirmSms(id);
+    }
     return NextResponse.json({ ok: true, reservation: updated });
   } catch (err) {
     const message = err instanceof Error ? err.message : "상태 변경 실패";
