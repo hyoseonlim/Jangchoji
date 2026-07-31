@@ -1,138 +1,59 @@
 // Static galleries served from /public/images/<folder>/*.
-// To add images: drop new files into public/images/<folder>/ and append to the list below.
+// To add images: drop new files into public/images/<folder>/ and bump the count below.
 // Paths are percent-encoded so Next.js can safely emit them in HTTP Link preload headers
 // (raw non-ASCII characters break the header ByteString requirement).
 
 const enc = (paths: string[]) => paths.map(encodeURI);
 
-const bbqPhotos = enc([
-  "/images/바베큐/bbq1.png",
-  "/images/바베큐/bbq2.png",
-  "/images/바베큐/bbq3.png",
-  "/images/바베큐/bbq4.png",
-  "/images/바베큐/bbq5.png",
-  "/images/바베큐/bbq6.jpeg",
-  "/images/바베큐/bbq7.jpeg",
-  "/images/바베큐/bbq8.jpeg",
-]);
+// 파일명이 {1..count}.{ext} 형태인 폴더용 헬퍼.
+const seq = (folder: string, count: number, ext: "jpeg" | "png" = "jpeg") =>
+  enc(Array.from({ length: count }, (_, i) => `/images/${folder}/${i + 1}.${ext}`));
+
+// 확장자가 인덱스별로 다른 폴더용 헬퍼. exts[i] 가 (i+1).ext 로 매핑.
+const seqMixed = (folder: string, exts: readonly ("jpeg" | "png")[]) =>
+  enc(exts.map((ext, i) => `/images/${folder}/${i + 1}.${ext}`));
+
+const rides = seq("놀이기구", 15);
+const ski = seq("스키보드", 16);
+const surf = seq("서핑", 19);
+const waterpark = seq("워터파크", 18);
+const cafe = seq("배카페", 10);
+const rooftop = seq("루프탑", 23);
+const stay = seq("숙소", 10);
+const bbq = seqMixed("바베큐", ["png", "png", "png", "png", "png", "jpeg", "jpeg", "jpeg"]);
+const main = enc(Array.from({ length: 8 }, (_, i) => `/images/메인/${i}.jpeg`));
+// info: 5·11·26 은 jpeg, 나머지는 png
+const info = seqMixed(
+  "info",
+  Array.from({ length: 28 }, (_, i) => {
+    const n = i + 1;
+    return n === 5 || n === 11 || n === 26 ? "jpeg" : "png";
+  }),
+);
 
 export const galleries = {
-  rides: enc([
-    "/images/놀이기구/ride1.jpeg",
-    "/images/놀이기구/ride2.jpeg",
-    "/images/놀이기구/ride3.jpeg",
-    "/images/놀이기구/ride4.jpeg",
-    "/images/놀이기구/ride5.jpeg",
-    "/images/놀이기구/ride7.jpeg",
-    "/images/놀이기구/ride8.jpeg",
-  ]),
-  ski: enc([
-    "/images/스키보드/ski1.jpeg",
-    "/images/스키보드/ski2.jpeg",
-  ]),
-  surf: enc([
-    "/images/서핑/surf1.jpeg",
-    "/images/서핑/surf2.jpeg",
-    "/images/서핑/surf3.jpeg",
-  ]),
-  waterpark: enc([
-    "/images/워터파크/waterpark1.jpeg",
-    "/images/워터파크/waterpark2.jpeg",
-    "/images/워터파크/waterpark3.jpeg",
-    "/images/워터파크/waterpark4.jpeg",
-    "/images/워터파크/waterpark5.jpeg",
-    "/images/워터파크/waterpark6.jpeg",
-    "/images/워터파크/waterpark7.jpeg",
-  ]),
-  cafe: enc([
-    "/images/배카페/cafe1.jpeg",
-    "/images/배카페/cafe2.jpeg",
-    "/images/배카페/cafe3.jpeg",
-    "/images/배카페/cafe4.jpeg",
-    "/images/배카페/cafe5.jpeg",
-    "/images/배카페/cafe6.jpeg",
-    "/images/배카페/cafe7.jpeg",
-    "/images/배카페/cafe8.jpeg",
-  ]),
-  bbq: bbqPhotos,
-  rooftop: enc([
-    "/images/루프탑/rooftop1.jpeg",
-    "/images/루프탑/rooftop2.jpeg",
-    "/images/루프탑/rooftop3.jpeg",
-    "/images/루프탑/rooftop4.jpeg",
-    "/images/루프탑/rooftop5.jpeg",
-    "/images/루프탑/rooftop6.jpeg",
-    "/images/루프탑/rooftop7.jpeg",
-    "/images/루프탑/rooftop8.jpeg",
-    "/images/루프탑/rooftop9.jpeg",
-  ]),
-  stay: enc([
-    "/images/숙소/acco1.jpeg",
-    "/images/숙소/acco2.jpeg",
-    "/images/숙소/acco3.jpeg",
-    "/images/숙소/acco4.jpeg",
-    "/images/숙소/acco5.jpeg",
-    "/images/숙소/acco6.jpeg",
-    "/images/숙소/acco7.jpeg",
-    "/images/숙소/acco8.jpeg",
-    "/images/숙소/acco9.jpeg",
-    "/images/숙소/acco10.jpeg",
-  ]),
-  main: enc([
-    "/images/메인/0.jpeg",
-    "/images/메인/1.jpeg",
-    "/images/메인/2.jpeg",
-    "/images/메인/3.jpeg",
-    "/images/메인/4.jpeg",
-    "/images/메인/5.jpeg",
-    "/images/메인/6.jpeg",
-    "/images/메인/7.jpeg",
-  ]),
-  info: enc([
-    "/images/info/1.png",
-    "/images/info/2.png",
-    "/images/info/3.png",
-    "/images/info/4.png",
-    "/images/info/5.jpeg",
-    "/images/info/6.png",
-    "/images/info/7.png",
-    "/images/info/8.png",
-    "/images/info/9.png",
-    "/images/info/10.png",
-    "/images/info/11.jpeg",
-    "/images/info/12.png",
-    "/images/info/13.png",
-    "/images/info/14.png",
-    "/images/info/15.png",
-    "/images/info/16.png",
-    "/images/info/17.png",
-    "/images/info/18.png",
-    "/images/info/19.png",
-    "/images/info/20.png",
-    "/images/info/21.png",
-    "/images/info/22.png",
-    "/images/info/23.png",
-    "/images/info/24.png",
-    "/images/info/25.png",
-    "/images/info/26.jpeg",
-    "/images/info/27.png",
-    "/images/info/28.png",
-  ]),
+  rides,
+  ski,
+  surf,
+  waterpark,
+  cafe,
+  bbq,
+  rooftop,
+  stay,
+  main,
+  info,
+  // 상세 페이지도 메인 슬라이드와 동일한 사진들을 재사용.
   activityDetails: {
-    rides: Array.from({ length: 15 }, (_, i) => encodeURI(`/images/놀이기구/상세/${i + 1}.jpeg`)),
-    ski: Array.from({ length: 15 }, (_, i) => encodeURI(`/images/스키보드/상세/${i + 1}.jpeg`)),
-    wakesurf: Array.from({ length: 19 }, (_, i) => encodeURI(`/images/서핑/상세/${i + 1}.jpeg`)),
-    waterpark: Array.from({ length: 16 }, (_, i) => encodeURI(`/images/워터파크/상세/${i + 1}.jpeg`)),
-    bbq: bbqPhotos,
-    cafe: Array.from({ length: 10 }, (_, i) => encodeURI(`/images/배카페/상세/${i + 1}.jpeg`)),
-    rooftop: Array.from({ length: 22 }, (_, i) => encodeURI(`/images/루프탑/상세/${i + 1}.jpeg`)),
-    stay4: enc(["/images/숙소/상세/4인실.jpeg"]),
-    stay5: enc(["/images/숙소/상세/5인실.jpeg"]),
-    stay6: enc(["/images/숙소/상세/6인실.jpeg", "/images/숙소/상세/6인실1.jpeg"]),
-    stay8: enc([
-      "/images/숙소/상세/8인실.jpeg",
-      "/images/숙소/상세/8인실1.jpeg",
-      "/images/숙소/상세/8인실2.jpeg",
-    ]),
+    rides,
+    ski,
+    wakesurf: surf,
+    waterpark,
+    bbq,
+    cafe,
+    rooftop,
+    stay4: stay,
+    stay5: stay,
+    stay6: stay,
+    stay8: stay,
   },
 };
