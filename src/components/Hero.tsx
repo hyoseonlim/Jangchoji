@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { PlayIcon, InstagramIcon } from "lucide-react";
 import type { Dictionary, Locale } from "@/i18n";
 import { ReserveButton } from "./ReserveButton";
+import { assetUrl } from "@/lib/assetUrl";
 
-const skiImage = "/images/ski.png";
-const boardImage = "/images/board.png";
+const skiImage = assetUrl("/images/ski.webp");
+const boardImage = assetUrl("/images/board.webp");
 
 type ChipItem = { text: string; href: string };
 

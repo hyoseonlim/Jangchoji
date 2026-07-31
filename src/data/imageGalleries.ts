@@ -1,17 +1,12 @@
-// Static galleries served from /public/images/<folder>/*.
-// To add images: drop new files into public/images/<folder>/ and bump the count below.
-// Paths are percent-encoded so Next.js can safely emit them in HTTP Link preload headers
-// (raw non-ASCII characters break the header ByteString requirement).
+// Static galleries served from /public/images/<folder>/*.webp (또는 R2).
+// 새 이미지 추가: public/images/<folder>/ 에 다음 번호로 파일 넣고 아래 seq() 카운트만 올림.
+// NEXT_PUBLIC_ASSET_URL 로 CDN(예: Cloudflare R2)에서 서빙되며, 없으면 로컬 폴더 폴백.
 
-const enc = (paths: string[]) => paths.map(encodeURI);
+import { assetUrl } from "@/lib/assetUrl";
 
-// 파일명이 {1..count}.{ext} 형태인 폴더용 헬퍼.
-const seq = (folder: string, count: number, ext: "jpeg" | "png" = "jpeg") =>
-  enc(Array.from({ length: count }, (_, i) => `/images/${folder}/${i + 1}.${ext}`));
-
-// 확장자가 인덱스별로 다른 폴더용 헬퍼. exts[i] 가 (i+1).ext 로 매핑.
-const seqMixed = (folder: string, exts: readonly ("jpeg" | "png")[]) =>
-  enc(exts.map((ext, i) => `/images/${folder}/${i + 1}.${ext}`));
+// 파일명이 {1..count}.webp 형태인 폴더용 헬퍼.
+const seq = (folder: string, count: number) =>
+  Array.from({ length: count }, (_, i) => assetUrl(`/images/${folder}/${i + 1}.webp`));
 
 const rides = seq("놀이기구", 15);
 const ski = seq("스키보드", 16);
@@ -20,16 +15,10 @@ const waterpark = seq("워터파크", 18);
 const cafe = seq("배카페", 10);
 const rooftop = seq("루프탑", 23);
 const stay = seq("숙소", 10);
-const bbq = seqMixed("바베큐", ["png", "png", "png", "png", "png", "jpeg", "jpeg", "jpeg"]);
-const main = enc(Array.from({ length: 8 }, (_, i) => `/images/메인/${i}.jpeg`));
-// info: 5·11·26 은 jpeg, 나머지는 png
-const info = seqMixed(
-  "info",
-  Array.from({ length: 28 }, (_, i) => {
-    const n = i + 1;
-    return n === 5 || n === 11 || n === 26 ? "jpeg" : "png";
-  }),
-);
+const bbq = seq("바베큐", 8);
+const info = seq("info", 28);
+// 메인 슬라이드는 0.webp 부터 시작.
+const main = Array.from({ length: 8 }, (_, i) => assetUrl(`/images/메인/${i}.webp`));
 
 export const galleries = {
   rides,

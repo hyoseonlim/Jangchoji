@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Dictionary } from "@/i18n";
 import { galleries } from "@/data/imageGalleries";
+import { assetUrl } from "@/lib/assetUrl";
 
 type ActivitySlug =
   | "rides"
@@ -24,14 +25,14 @@ const galleryBySlug: Record<Exclude<ActivitySlug, "stay" | "rides">, readonly st
 };
 
 const rideImageByNo: Record<number, string> = {
-  1: "/images/rides/flyfish.jpeg",
-  2: "/images/rides/ufo.png",
-  3: "/images/rides/waffle.jpeg",
-  4: "/images/rides/wild_pang_pang.jpeg",
-  5: "/images/rides/bandwagon.png",
-  6: "/images/rides/lotus.png",
-  7: "/images/rides/peanut_boat.jpeg",
-  8: "/images/rides/banana_boat.png",
+  1: assetUrl("/images/rides/flyfish.webp"),
+  2: assetUrl("/images/rides/ufo.webp"),
+  3: assetUrl("/images/rides/waffle.webp"),
+  4: assetUrl("/images/rides/wild_pang_pang.webp"),
+  5: assetUrl("/images/rides/bandwagon.webp"),
+  6: assetUrl("/images/rides/lotus.webp"),
+  7: assetUrl("/images/rides/peanut_boat.webp"),
+  8: assetUrl("/images/rides/banana_boat.webp"),
 };
 
 const roomImages: Record<string, readonly string[]> = {
