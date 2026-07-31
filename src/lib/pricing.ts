@@ -6,7 +6,9 @@ export const PEAK_RANGES: ReadonlyArray<{ start: string; end: string }> = [
 
 // 한국 공휴일 (대체공휴일 포함). 요금 계산 시 :
 //   1) 공휴일 당일 밤 → '토요일' 요금
-//   2) 공휴일 전날 밤 → '토요일' 요금 (다음날이 쉬는 날이라 실질적으로 주말과 동일)
+//   2) 일요일 밤 + 다음날이 공휴일 → '토요일' 요금 (연휴 마지막 밤)
+//      예: 8/16(일) → 8/17(월, 광복절 대체공휴일), 10/4(일) → 10/5(월, 개천절 대체공휴일)
+//      다른 요일(목/금/수 등) + 다음날 공휴일 조합은 weekday 유지.
 // 매년 연말/연초에 다음 해 공휴일을 추가해주세요.
 // npm 라이브러리 date-holidays 로 대체 가능하지만, 소규모 운영이라 하드코딩 유지.
 export const HOLIDAYS: Record<string, string> = {
@@ -51,13 +53,19 @@ export function holidayName(date: Date): string | null {
   return HOLIDAYS[toISODate(date)] ?? null;
 }
 
-// 요금 판정용 day_type. 토요일 · 공휴일 · 공휴일 전날 밤이면 saturday 요금 적용.
+// 요금 판정용 day_type.
+//   - 밤이 토요일 · 공휴일 → saturday
+//   - 일요일 밤 + 다음날 공휴일 (연휴 마지막 밤) → saturday
+//   - 그 외 (평일 밤이 다음날 공휴일이더라도) → weekday
 export function dayTypeForDate(date: Date): DayType {
   if (isHoliday(date)) return "saturday";
-  if (date.getDay() === 6) return "saturday";
-  const next = new Date(date);
-  next.setDate(next.getDate() + 1);
-  if (isHoliday(next)) return "saturday";
+  const dow = date.getDay();
+  if (dow === 6) return "saturday";
+  if (dow === 0) {
+    const next = new Date(date);
+    next.setDate(next.getDate() + 1);
+    if (isHoliday(next)) return "saturday";
+  }
   return "weekday";
 }
 
@@ -324,7 +332,8 @@ export function summarizeSeasonFromRange(checkIn: string, checkOut: string): Sea
 }
 
 // 선택 기간에 걸친 공휴일 목록 (안내용).
-// 체크아웃 당일이 공휴일이면 전날 밤 요금(토요일)의 근거이므로 함께 표시.
+// 마지막 밤이 일요일이고 체크아웃 당일이 공휴일이면, 그 공휴일도 함께 표시
+// (일요일 밤이 saturday 요금으로 상승하는 근거이므로).
 export function holidaysInRange(
   checkIn: string,
   checkOut: string,
@@ -337,8 +346,11 @@ export function holidaysInRange(
     const name = HOLIDAYS[iso];
     if (name) out.push({ date: iso, name });
   }
-  const checkOutName = HOLIDAYS[checkOut];
-  if (checkOutName) out.push({ date: checkOut, name: checkOutName });
+  const lastNight = nights[nights.length - 1];
+  if (lastNight.getDay() === 0) {
+    const checkOutName = HOLIDAYS[checkOut];
+    if (checkOutName) out.push({ date: checkOut, name: checkOutName });
+  }
   return out;
 }
 
