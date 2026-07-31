@@ -57,3 +57,7 @@ coverage/
 
 # TypeScript
 *.tsbuildinfo
+
+# Assets on Cloudflare R2 (main.png 만 OG 이미지 용도로 Vercel 유지)
+public/images/*
+!public/images/main.png
