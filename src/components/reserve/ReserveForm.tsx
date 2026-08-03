@@ -149,6 +149,7 @@ export function ReserveForm({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState<DoneSnapshot | null>(null);
+  const [availabilityRefreshTick, setAvailabilityRefreshTick] = useState(0);
 
   const representative = guests.find((g) => g.isRepresentative);
   const representativeName = representative?.name.trim() ?? "";
@@ -235,7 +236,26 @@ export function ReserveForm({
         });
       });
     return () => controller.abort();
-  }, [checkIn, checkOut, guestsCount, reservationMode]);
+  }, [checkIn, checkOut, guestsCount, reservationMode, availabilityRefreshTick]);
+
+  useEffect(() => {
+    if (reservationMode !== "stay") return;
+    if (!checkIn || !checkOut || checkOut <= checkIn) return;
+    if (availability.state !== "unavailable" && availability.state !== "error") return;
+
+    const refreshAvailability = () => {
+      setAvailabilityRefreshTick((tick) => tick + 1);
+    };
+    const intervalId = window.setInterval(refreshAvailability, 15_000);
+    window.addEventListener("focus", refreshAvailability);
+    document.addEventListener("visibilitychange", refreshAvailability);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshAvailability);
+      document.removeEventListener("visibilitychange", refreshAvailability);
+    };
+  }, [availability.state, checkIn, checkOut, reservationMode]);
 
   // 인원 수가 줄어들면 guests 배열 끝에서 잘라내고, 대표자 유지
   useEffect(() => {

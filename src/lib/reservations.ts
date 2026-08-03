@@ -325,6 +325,7 @@ async function fetchOverlappingGuestCounts(
   let q = supabase
     .from("reservations")
     .select("id, guests_count")
+    .eq("reservation_type", "stay")
     .in("status", ["pending", "confirmed"])
     .lt("check_in", checkOut)
     .gt("check_out", checkIn);
