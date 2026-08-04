@@ -42,7 +42,7 @@ export function AdminModal({
             inset: 0,
             backgroundColor: "rgba(0,0,0,0.6)",
             backdropFilter: "blur(2px)",
-            zIndex: 50,
+            zIndex: 100,
           }}
         />
         <AlertDialog.Content
@@ -56,7 +56,7 @@ export function AdminModal({
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: "4px",
             padding: "24px",
-            zIndex: 51,
+            zIndex: 101,
             boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
           }}
         >
