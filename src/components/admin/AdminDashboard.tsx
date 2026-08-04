@@ -76,6 +76,9 @@ function formatFullDateKo(iso: string): string {
   const dt = new Date(y, m - 1, d);
   return `${y}년 ${m}월 ${d}일 (${DAY_KO[dt.getDay()]})`;
 }
+function datesOverlap(aIn: string, aOut: string, bIn: string, bOut: string): boolean {
+  return bIn < aOut && bOut > aIn;
+}
 
 // 정렬: 대기 → 확정 → 취소, 같은 상태 안에서는 접수일 최신순
 function sortReservations(list: AdminReservationRow[]): AdminReservationRow[] {
@@ -299,13 +302,24 @@ export function AdminDashboard({
     const occupant = rows.find(
       (r) =>
         r.id !== row.id &&
-        r.status === "confirmed" &&
+        r.status !== "cancelled" &&
         r.reservation_type === "stay" &&
         r.room_key === roomKey &&
-        r.check_in === row.check_in &&
-        r.check_out === row.check_out,
+        datesOverlap(row.check_in, row.check_out, r.check_in, r.check_out),
     );
+    const canSwap =
+      occupant?.status === "confirmed" &&
+      occupant.check_in === row.check_in &&
+      occupant.check_out === row.check_out;
     if (occupant) {
+      if (!canSwap) {
+        await showAlert(
+          "호실 변경 불가",
+          `${ROOMS[roomKey].title}에는 ${occupant.check_in}~${occupant.check_out} 일정의 ${occupant.representative?.name ?? "-"} 예약이 겹쳐 있습니다.\n\n같은 체크인·체크아웃 일정의 확정 숙박 예약끼리만 호실을 교체할 수 있습니다.`,
+          "danger",
+        );
+        return false;
+      }
       const ok = await openModal({
         title: "호실 교체",
         message:
@@ -1795,6 +1809,9 @@ function actionLabel(entry: ReservationHistoryEntry): string {
   if (entry.action === "created") return "예약 접수 (온라인)";
   if (entry.action === "admin_created") return "수기 등록";
   if (entry.action === "edited") return "예약 편집";
+  if (entry.action === "room_assigned") return "객실 배정";
+  if (entry.action === "room_moved") return "호실 이동";
+  if (entry.action === "room_swapped") return "호실 교체";
   if (entry.after_status) return STATUS_LABEL_HISTORY[entry.after_status];
   return entry.action;
 }
@@ -1803,6 +1820,9 @@ function actionColor(action: string): string {
   if (action === "created") return "#a1a1aa";
   if (action === "admin_created") return "#a78bfa";
   if (action === "edited") return "#fbbf24";
+  if (action === "room_assigned") return "#34d399";
+  if (action === "room_moved") return "#38bdf8";
+  if (action === "room_swapped") return "#c084fc";
   if (action === "confirmed") return "#00d5e6";
   if (action === "cancelled") return "#ff6b7a";
   return "#00d5e6";
@@ -1826,10 +1846,16 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const ROOM_LABELS_HISTORY: Record<string, string> = {
+  room_4_a: "2호 (4인실 A)",
+  room_4_b: "3호 (4인실 B)",
+  room_5_a: "4호 (5인실 A)",
+  room_5_b: "5호 (5인실 B)",
+  room_6_a: "6호 (6인실 A)",
+  room_6_b: "7호 (6인실 B)",
+  room_8: "1호 (8인실)",
   room_4: "4인실",
   room_5: "5인실",
   room_6: "6인실",
-  room_8: "8인실",
 };
 
 function formatFieldValue(field: string, value: unknown): string {
@@ -2144,13 +2170,13 @@ function RoomMoveDialog({
 }) {
   if (!target || target.reservation_type !== "stay" || !target.room_key) return null;
   const currentRoomKey = target.room_key;
-  const sameDateRows = rows.filter(
+  const overlapRows = rows.filter(
     (r) =>
       r.id !== target.id &&
-      r.status === "confirmed" &&
+      r.status !== "cancelled" &&
       r.reservation_type === "stay" &&
-      r.check_in === target.check_in &&
-      r.check_out === target.check_out,
+      r.room_key &&
+      datesOverlap(target.check_in, target.check_out, r.check_in, r.check_out),
   );
 
   return (
@@ -2194,10 +2220,14 @@ function RoomMoveDialog({
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
           {ROOM_KEYS.map((roomKey) => {
             const room = ROOMS[roomKey];
-            const occupant = sameDateRows.find((r) => r.room_key === roomKey) ?? null;
+            const occupant = overlapRows.find((r) => r.room_key === roomKey) ?? null;
             const current = currentRoomKey === roomKey;
+            const canSwap =
+              occupant?.status === "confirmed" &&
+              occupant.check_in === target.check_in &&
+              occupant.check_out === target.check_out;
             const targetFits = room.maxGuests >= target.guests_count;
-            const swapFits = !occupant || ROOMS[currentRoomKey].maxGuests >= occupant.guests_count;
+            const swapFits = !occupant || (canSwap && ROOMS[currentRoomKey].maxGuests >= occupant.guests_count);
             const disabled = busy || current || !targetFits || !swapFits;
             return (
               <button
@@ -2211,13 +2241,17 @@ function RoomMoveDialog({
                   textAlign: "left",
                   backgroundColor: current
                     ? "rgba(255,255,255,0.04)"
-                    : occupant
+                    : occupant && canSwap
                       ? "rgba(167,139,250,0.12)"
+                      : occupant
+                        ? "rgba(255,107,122,0.1)"
                       : "rgba(0,194,209,0.08)",
                   border: current
                     ? "1px solid rgba(255,255,255,0.14)"
-                    : occupant
+                    : occupant && canSwap
                       ? "1px solid rgba(167,139,250,0.45)"
+                      : occupant
+                        ? "1px solid rgba(255,107,122,0.38)"
                       : "1px solid rgba(0,194,209,0.35)",
                   borderRadius: "3px",
                   color: disabled ? "rgba(255,255,255,0.35)" : "#fff",
@@ -2229,13 +2263,20 @@ function RoomMoveDialog({
                 <div style={{ marginTop: "3px", fontSize: "11px", color: "rgba(255,255,255,0.62)" }}>
                   {current
                     ? "현재 호실"
-                    : occupant
+                    : occupant && canSwap
                       ? `${occupant.representative?.name ?? "-"}와 교체`
+                      : occupant
+                        ? `${occupant.check_in}~${occupant.check_out} 겹침`
                       : "빈 호실로 이동"}
                 </div>
                 {!targetFits && (
                   <div style={{ marginTop: "3px", fontSize: "10px", color: "#ff6b7a", fontWeight: 800 }}>
                     인원 초과
+                  </div>
+                )}
+                {occupant && canSwap && !swapFits && (
+                  <div style={{ marginTop: "3px", fontSize: "10px", color: "#ff6b7a", fontWeight: 800 }}>
+                    상대 인원 초과
                   </div>
                 )}
               </button>

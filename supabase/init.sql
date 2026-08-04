@@ -201,6 +201,8 @@ AS $$
 DECLARE
   v_status_a    reservation_status;
   v_status_b    reservation_status;
+  v_type_a      TEXT;
+  v_type_b      TEXT;
   v_room_a      TEXT;
   v_room_b      TEXT;
   v_check_in_a  DATE;
@@ -212,16 +214,28 @@ BEGIN
     RAISE EXCEPTION 'swap requires two distinct reservations';
   END IF;
 
-  -- 동시 스왑 방지 : 두 행을 잠금
-  SELECT status, room_key, check_in, check_out INTO v_status_a, v_room_a, v_check_in_a, v_check_out_a
-    FROM reservations WHERE id = p_id_a FOR UPDATE;
+  -- 동시 스왑 방지 : 두 행을 항상 id 오름차순으로 잠금
+  PERFORM 1
+    FROM reservations
+   WHERE id IN (p_id_a, p_id_b)
+   ORDER BY id
+   FOR UPDATE;
+
+  SELECT status, reservation_type, room_key, check_in, check_out
+    INTO v_status_a, v_type_a, v_room_a, v_check_in_a, v_check_out_a
+    FROM reservations WHERE id = p_id_a;
   IF v_status_a IS NULL THEN
     RAISE EXCEPTION 'reservation not found: %', p_id_a;
   END IF;
-  SELECT status, room_key, check_in, check_out INTO v_status_b, v_room_b, v_check_in_b, v_check_out_b
-    FROM reservations WHERE id = p_id_b FOR UPDATE;
+  SELECT status, reservation_type, room_key, check_in, check_out
+    INTO v_status_b, v_type_b, v_room_b, v_check_in_b, v_check_out_b
+    FROM reservations WHERE id = p_id_b;
   IF v_status_b IS NULL THEN
     RAISE EXCEPTION 'reservation not found: %', p_id_b;
+  END IF;
+
+  IF v_type_a <> 'stay' OR v_type_b <> 'stay' THEN
+    RAISE EXCEPTION 'both reservations must be stay reservations to swap';
   END IF;
 
   IF v_check_in_a <> v_check_in_b OR v_check_out_a <> v_check_out_b THEN
