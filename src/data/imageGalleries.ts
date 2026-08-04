@@ -32,6 +32,7 @@ export const galleries = {
   main,
   info,
   // 상세 페이지도 메인 슬라이드와 동일한 사진들을 재사용.
+  // 숙소 방별 상세는 R2 의 숙소/상세/*.webp 를 사용.
   activityDetails: {
     rides,
     ski,
@@ -40,9 +41,16 @@ export const galleries = {
     bbq,
     cafe,
     rooftop,
-    stay4: stay,
-    stay5: stay,
-    stay6: stay,
-    stay8: stay,
+    stay4: [assetUrl("/images/숙소/상세/4인실.webp")],
+    stay5: [assetUrl("/images/숙소/상세/5인실.webp")],
+    stay6: [
+      assetUrl("/images/숙소/상세/6인실.webp"),
+      assetUrl("/images/숙소/상세/6인실1.webp"),
+    ],
+    stay8: [
+      assetUrl("/images/숙소/상세/8인실.webp"),
+      assetUrl("/images/숙소/상세/8인실1.webp"),
+      assetUrl("/images/숙소/상세/8인실2.webp"),
+    ],
   },
 };
