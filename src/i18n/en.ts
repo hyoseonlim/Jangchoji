@@ -237,6 +237,7 @@ export const en: Dictionary = {
       groupSizeLabels: { "4": "4 guests", "3": "3 guests", "2": "2 guests" },
       packageSuffix: "Stay package rates",
       tableHead: { config: "Package", weekday: "Weekday", saturday: "Saturday" },
+      tableNotice: "*All listed package rates are per person. Rates vary depending on the selected package.",
       notes: {
         waterpark: "Unlimited water park access included",
         bbqPrefix: "Unlimited BBQ includes",
@@ -518,12 +519,6 @@ export const en: Dictionary = {
           "Can't swim? No problem. Life jackets are mandatory and an instructor stays by your side. Beginners can jump in with confidence.",
       },
       {
-        icon: "🏥",
-        title: "Emergency response ready",
-        description:
-          "EMT-qualified staff are on site. First-aid equipment is on hand, and we're connected to Gapyeong hospitals for emergencies.",
-      },
-      {
         icon: "🌊",
         title: "Separated water zones",
         description:
@@ -533,7 +528,7 @@ export const en: Dictionary = {
         icon: "📋",
         title: "Pre-activity safety briefing",
         description:
-          "A 10–15 minute safety briefing is mandatory before every activity. Once you know the rules, you can enjoy every ride worry-free.",
+          "A safety briefing is mandatory before every activity. Once you know the rules, you can enjoy every ride worry-free.",
       },
     ],
     ctaTitle: "Any questions?",

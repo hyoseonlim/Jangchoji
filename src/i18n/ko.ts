@@ -155,7 +155,7 @@ export const ko = {
     items: [
       { no: 1, name: "플라이피쉬", capacity: "2인승", description: "동남아 스타일, 하늘을 나는 익스트림 놀이기구" },
       { no: 2, name: "UFO", capacity: "8인승", description: "가운데가 톡톡 튀어오르는 UFO" },
-      { no: 3, name: "와풀", capacity: "6인승", description: "6명이 누워서 즐기는 와풀" },
+      { no: 3, name: "와플", capacity: "6인승", description: "6명이 누워서 즐기는 와플" },
       { no: 4, name: "와일드팡팡", capacity: "4인승", description: "안정적인 좌석형 와일드팡팡" },
       { no: 5, name: "밴드웨건", capacity: "6인승", description: "앞 3명 앉고 뒤 3명 서서 탑승" },
       { no: 6, name: "로투스", capacity: "6인승", description: "6명이 함께하는 로투스" },
@@ -236,6 +236,7 @@ export const ko = {
       groupSizeLabels: { "4": "4인 기준", "3": "3인 기준", "2": "2인 기준" },
       packageSuffix: "숙박 패키지 요금표",
       tableHead: { config: "구성", weekday: "평일", saturday: "토요일" },
+      tableNotice: "*표시된 모든 패키지 요금은 1인 기준입니다. 선택하신 구성에 따라 요금이 달라집니다.",
       notes: {
         waterpark: "워터파크 무제한 포함",
         bbqPrefix: "무제한 BBQ 구성",
@@ -517,12 +518,6 @@ export const ko = {
           "수영을 전혀 못하셔도 괜찮습니다! 구명조끼 착용 필수이며, 강사가 항상 옆에서 안전을 책임집니다. 초보자도 자신있게 체험하실 수 있습니다.",
       },
       {
-        icon: "🏥",
-        title: "응급 안전 시스템",
-        description:
-          "구급대원 자격을 갖춘 스태프가 현장에 상주합니다. 응급처치 장비를 완비하고 있으며, 가평 병원과 비상 연락 체계를 갖추고 있습니다.",
-      },
-      {
         icon: "🌊",
         title: "안전한 수역 확보",
         description:
@@ -532,7 +527,7 @@ export const ko = {
         icon: "📋",
         title: "사전 안전 교육 필수",
         description:
-          "모든 액티비티 참가 전 의무적으로 안전 교육을 실시합니다. 10~15분 교육 후 안전 수칙을 숙지한 뒤 즐기실 수 있어 걱정이 없습니다.",
+          "모든 액티비티 참가 전 의무적으로 안전 교육을 실시합니다. 안전 수칙을 숙지한 뒤 즐기실 수 있어 걱정이 없습니다.",
       },
     ],
     ctaTitle: "궁금한 점이 있으신가요?",

@@ -29,7 +29,7 @@ const MIN_DAY_USE_GUESTS = 1;
 const DEFAULT_GUESTS = 4;
 const MIN_SATURDAY_GUESTS = 4;
 const MIN_INBOAT_GUESTS = 4;
-const MAX_GUESTS = 10;
+const MAX_GUESTS = 100;
 const MAX_DAY_USE_BBQ_GUESTS = 20;
 const STAY_REFUND_POLICY_ITEMS = [
   "패키지 예약금 환불은 일체 불가하며, 예약일 변경은 이용일 7일 전까지 가능합니다.",

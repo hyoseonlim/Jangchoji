@@ -41,8 +41,8 @@ export const DEFAULT_GROUP_SIZE: GroupSize = "4";
 export const MIN_GUESTS = 2;
 export const MIN_SATURDAY_GUESTS = 4;
 export const MIN_INBOAT_GUESTS = 4;
-// 8인실이 물리적으로 수용 가능한 최대 인원 (11인 이상은 단일 예약 불가)
-export const MAX_GUESTS_PER_RESERVATION = 10;
+// 온라인 예약 1건당 최대 입력 인원
+export const MAX_GUESTS_PER_RESERVATION = 100;
 export const SATURDAY_SMALL_GROUP_MESSAGE =
   "토요일 4인 미만 예약은 전화로 문의 부탁드립니다.";
 

@@ -322,6 +322,12 @@ export function Pricing({ dict }: { dict: Dictionary }) {
               </tbody>
             </table>
           </div>
+          <p
+            className="mt-3 text-black/55"
+            style={{ fontSize: "12px", lineHeight: 1.6 }}
+          >
+            {packages.tableNotice}
+          </p>
 
           <ul
             className="mt-6 space-y-2 text-black/70"
