@@ -1264,6 +1264,23 @@ export function ReserveForm({
         <label className="mt-4 flex items-start gap-2.5 cursor-pointer">
           <input
             type="checkbox"
+            checked={paymentConfirmed}
+            onChange={(e) => setPaymentConfirmed(e.target.checked)}
+            className="mt-0.5"
+            required
+          />
+          <span className="text-black" style={{ fontSize: "13px", lineHeight: 1.6, fontWeight: 600 }}>
+            총 금액{" "}
+            <strong className="text-black" style={{ letterSpacing: "-0.01em" }}>
+              {grandTotal > 0 ? won(grandTotal) : "-"}
+            </strong>
+            을 입금했습니다. 관리자 확인 후 예약이 확정됨을 이해합니다.
+          </span>
+        </label>
+
+        <label className="mt-3 flex items-start gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
             checked={phoneConfirmed}
             onChange={(e) => setPhoneConfirmed(e.target.checked)}
             disabled={!representativePhone}
@@ -1276,19 +1293,6 @@ export function ReserveForm({
               {representativePhone || "(먼저 입력해주세요)"}
             </strong>
             {representativePhone && " 가(이) 정확하며, 이 번호로 예약 확정 안내를 받겠습니다."}
-          </span>
-        </label>
-
-        <label className="mt-3 flex items-start gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={paymentConfirmed}
-            onChange={(e) => setPaymentConfirmed(e.target.checked)}
-            className="mt-0.5"
-            required
-          />
-          <span className="text-black" style={{ fontSize: "13px", lineHeight: 1.6, fontWeight: 600 }}>
-            총 금액을 입금하였으며, 관리자 확인 후 예약이 확정됨을 이해합니다.
           </span>
         </label>
 
