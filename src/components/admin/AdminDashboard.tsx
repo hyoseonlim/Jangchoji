@@ -14,12 +14,14 @@ import { ReservationEditor } from "./ReservationEditor";
 
 const numberFmt = new Intl.NumberFormat("ko-KR");
 const won = (n: number) => `₩${numberFmt.format(n)}`;
-const wonShort = (n: number) =>
-  n >= 10_000_000
-    ? `${(n / 10_000_000).toFixed(1)}천만`
-    : n >= 10_000
-      ? `${Math.round(n / 10_000)}만`
-      : numberFmt.format(n);
+const wonShort = (n: number) => {
+  if (n >= 100_000_000) {
+    const eok = Math.floor(n / 100_000_000);
+    const tenMillion = Math.floor((n % 100_000_000) / 10_000_000);
+    return tenMillion > 0 ? `${eok}억 ${tenMillion}천만` : `${eok}억`;
+  }
+  return n >= 10_000 ? `${Math.round(n / 10_000)}만` : numberFmt.format(n);
+};
 
 const STATUS_LABEL: Record<ReservationStatus, string> = {
   pending: "확정 대기",
@@ -43,8 +45,6 @@ const STATUS_ORDER: Record<ReservationStatus, number> = {
   cancelled: 2,
 };
 
-type AdminTab = "pending" | "confirmed";
-
 type HistoryState =
   | { status: "idle" }
   | { status: "loading" }
@@ -64,6 +64,11 @@ function addDaysISO(iso: string, days: number): string {
 function monthStartISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+function nextMonthStartISO(): string {
+  const d = new Date();
+  const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-01`;
 }
 const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
 function formatDateWithDay(iso: string): string {
@@ -109,7 +114,6 @@ export function AdminDashboard({
   const canWrite = admin.role === "admin";
 
   const [rows, setRows] = useState(initialRows);
-  const [tab, setTab] = useState<AdminTab>("pending");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [historyByRow, setHistoryByRow] = useState<Record<number, HistoryState>>({});
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -125,6 +129,7 @@ export function AdminDashboard({
   const today = todayISO();
   const weekEnd = addDaysISO(today, 7);
   const monthStart = monthStartISO();
+  const nextMonthStart = nextMonthStartISO();
 
   const counts = useMemo(() => {
     const c: Record<ReservationStatus, number> = { pending: 0, confirmed: 0, cancelled: 0 };
@@ -135,28 +140,64 @@ export function AdminDashboard({
   const kpi = useMemo(() => {
     let todayCheckIn = 0;
     let weekCheckIn = 0;
+    let totalRevenue = 0;
     let monthRevenue = 0;
     for (const r of rows) {
       if (r.status === "cancelled") continue;
       if (r.check_in === today) todayCheckIn += 1;
       if (r.check_in >= today && r.check_in < weekEnd) weekCheckIn += 1;
-      if (r.status === "confirmed" && r.check_in >= monthStart) monthRevenue += r.total_price;
+      if (r.status === "confirmed") {
+        totalRevenue += r.total_price;
+        if (r.check_in >= monthStart && r.check_in < nextMonthStart) {
+          monthRevenue += r.total_price;
+        }
+      }
     }
     return {
       pending: counts.pending,
       todayCheckIn,
       weekCheckIn,
+      totalRevenue,
       monthRevenue,
     };
-  }, [rows, counts.pending, today, weekEnd, monthStart]);
+  }, [rows, counts.pending, today, weekEnd, monthStart, nextMonthStart]);
 
-  const filtered = useMemo(() => {
-    const list = rows.filter((r) => {
-      if (tab === "pending") return r.status === "pending";
-      return r.status === "confirmed";
-    });
-    return sortReservations(list);
-  }, [rows, tab]);
+  const popularProducts = useMemo(() => {
+    const productMap = new Map<
+      string,
+      { label: string; quantity: number; revenue: number; reservations: number }
+    >();
+    for (const r of rows) {
+      if (r.status !== "confirmed") continue;
+      const seenInReservation = new Set<string>();
+      for (const p of r.packages) {
+        const cur = productMap.get(p.configKey) ?? {
+          label: p.label,
+          quantity: 0,
+          revenue: 0,
+          reservations: 0,
+        };
+        cur.quantity += p.quantity;
+        cur.revenue += p.lineTotal;
+        if (!seenInReservation.has(p.configKey)) {
+          cur.reservations += 1;
+          seenInReservation.add(p.configKey);
+        }
+        productMap.set(p.configKey, cur);
+      }
+    }
+    return [...productMap.values()]
+      .sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue || a.label.localeCompare(b.label))
+      .slice(0, 3);
+  }, [rows]);
+
+  const pendingRows = useMemo(() => {
+    return sortReservations(rows.filter((r) => r.status === "pending"));
+  }, [rows]);
+
+  const confirmedRows = useMemo(() => {
+    return sortReservations(rows.filter((r) => r.status === "confirmed"));
+  }, [rows]);
 
   function openModal(request: AdminModalRequest): Promise<boolean> {
     return new Promise((resolve) => {
@@ -402,8 +443,6 @@ export function AdminDashboard({
       if (expandedIds.has(editorTarget.id)) void fetchHistory(editorTarget.id);
     }
     await refresh();
-    // 저장한 예약이 현재 필터에서 숨겨지지 않도록 자동 조정
-    if (result.status === "pending" || result.status === "confirmed") setTab(result.status);
     // 방금 저장한 예약은 자동 확장해서 바로 확인 가능하도록
     setExpandedIds((prev) => new Set([...prev, result.id]));
   }
@@ -424,167 +463,124 @@ export function AdminDashboard({
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-5 md:px-8 py-4 md:py-10">
       {/* Header */}
-      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 md:mb-6 gap-3">
+      <header className="relative mb-4 md:mb-6 pr-11">
         <div>
-          <p className="tracking-[0.2em] uppercase" style={{ fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>
-            ADMIN
+          <p style={{ fontSize: "12px", fontWeight: 800, color: "rgba(255,255,255,0.48)" }}>
+            관리자 대시보드
           </p>
-          <h1 style={{ fontSize: "clamp(20px, 4vw, 26px)", fontWeight: 900, letterSpacing: "-0.02em", color: "#fff" }}>
-            예약 관리
+          <h1 style={{ fontSize: "clamp(20px, 4vw, 26px)", fontWeight: 900, letterSpacing: "-0.02em", color: "#fff", marginTop: "2px" }}>
+            {admin.displayName}님, 오늘도 파이팅!
           </h1>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.6)" }}>
-            {admin.displayName}
-            <span style={{ opacity: 0.55, marginLeft: "4px" }}>({admin.username})</span>
-          </span>
-          <span
-            style={{
-              padding: "3px 8px",
-              backgroundColor: canWrite ? "rgba(0,194,209,0.15)" : "rgba(255,255,255,0.06)",
-              color: canWrite ? "#00d5e6" : "rgba(255,255,255,0.55)",
-              fontSize: "11px",
-              fontWeight: 700,
-              borderRadius: "2px",
-            }}
-          >
-            {canWrite ? "변경 권한" : "조회 권한"}
-          </span>
+        <button
+          type="button"
+          onClick={handleLogout}
+          aria-label="로그아웃"
+          title="로그아웃"
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: "34px",
+            height: "34px",
+            border: "1px solid rgba(255,255,255,0.15)",
+            borderRadius: "2px",
+            backgroundColor: "transparent",
+            color: "rgba(255,255,255,0.75)",
+            fontSize: "16px",
+            lineHeight: 1,
+            cursor: "pointer",
+          }}
+        >
+          ⎋
+        </button>
+      </header>
+
+      <AdminSectionHeader
+        title="대기건"
+        count={counts.pending}
+        accent="#ffc107"
+        actions={
           <button
             type="button"
-            onClick={handleLogout}
+            onClick={refresh}
+            aria-label="새로고침"
+            title="새로고침"
             style={{
-              padding: "6px 12px",
+              width: "30px",
+              height: "30px",
               border: "1px solid rgba(255,255,255,0.15)",
               borderRadius: "2px",
               backgroundColor: "transparent",
               color: "rgba(255,255,255,0.75)",
-              fontSize: "12px",
+              fontSize: "15px",
+              lineHeight: 1,
               cursor: "pointer",
             }}
           >
-            로그아웃
+            ↻
           </button>
-        </div>
-      </header>
-
-      {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-4 md:mb-6">
-        <KpiCard
-          label="확정 대기"
-          value={kpi.pending}
-          unit="건"
-          accent="#ffc107"
-          highlighted={kpi.pending > 0}
-        />
-        <KpiCard label="오늘 체크인" value={kpi.todayCheckIn} unit="건" accent="#00d5e6" />
-        <KpiCard label="이번 주 체크인" value={kpi.weekCheckIn} unit="건" accent="#a1a1aa" />
-        <KpiCard label="이번 달 확정 매출" value={`₩${wonShort(kpi.monthRevenue)}`} accent="#00d5e6" />
+        }
+      />
+      <div className="mb-5 md:mb-6">
+        {pendingRows.length > 0 && (
+          <ReservationTable rows={pendingRows} {...tableProps} />
+        )}
       </div>
 
-      {/* Toolbar */}
-      <div
-        className="mb-4 p-2.5 md:p-3"
+      <section
+        className="mb-5 md:mb-6 p-2.5 md:p-3"
         style={{
-          backgroundColor: "#14171c",
-          border: "1px solid rgba(255,255,255,0.08)",
+          backgroundColor: "#202631",
+          border: "1px solid rgba(255,255,255,0.1)",
           borderRadius: "4px",
         }}
       >
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div
-            className="inline-flex p-0.5"
-            role="tablist"
-            style={{
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "3px",
-              backgroundColor: "rgba(0,0,0,0.2)",
-            }}
-          >
-            {(
-              [
-                ["pending", "대기건", counts.pending, "#ffc107"],
-                ["confirmed", "확정건", counts.confirmed, "#00d5e6"],
-              ] as const
-            ).map(([key, label, count, accent]) => {
-              const active = tab === key;
-              return (
-                <button
-                  type="button"
-                  key={key}
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setTab(key)}
-                  style={{
-                    padding: "6px 14px",
-                    backgroundColor: active ? "#fff" : "transparent",
-                    color: active ? "#0b0d10" : "rgba(255,255,255,0.65)",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    borderRadius: "2px",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  {label}
-                  <span style={{ marginLeft: "6px", color: active ? accent : "rgba(255,255,255,0.45)" }}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        {/* KPI */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3 mb-3">
+          <KpiCard label="오늘 체크인" value={kpi.todayCheckIn} unit="건" accent="#00d5e6" />
+          <KpiCard label="이번 주 체크인" value={kpi.weekCheckIn} unit="건" accent="#a1a1aa" />
+          <KpiCard label="총 확정 매출" value={`₩${wonShort(kpi.totalRevenue)}`} accent="#34d399" />
+          <KpiCard label="이번 달 매출" value={`₩${wonShort(kpi.monthRevenue)}`} accent="#00d5e6" />
+        </div>
 
-          <div className="flex items-center gap-2">
-            {canWrite && (
-              <button
-                type="button"
-                onClick={openCreate}
-                style={{
-                  padding: "6px 12px",
-                  border: "1px solid #00C2D1",
-                  borderRadius: "2px",
-                  backgroundColor: "#00C2D1",
-                  color: "#001518",
-                  fontSize: "12px",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                + 수기 등록
-              </button>
-            )}
+        <p className="mb-2" style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)" }}>
+          * 수기건으로 인해 정확하지 않을 수 있습니다.
+        </p>
+
+        <PopularProductsPanel products={popularProducts} compact />
+      </section>
+
+      <AdminSectionHeader
+        title="확정건"
+        count={counts.confirmed}
+        accent="#00d5e6"
+        actions={
+          canWrite ? (
             <button
               type="button"
-              onClick={refresh}
+              onClick={openCreate}
               style={{
-                padding: "6px 12px",
-                border: "1px solid rgba(255,255,255,0.15)",
+                padding: "6px 9px",
+                border: "1px solid #00C2D1",
                 borderRadius: "2px",
-                backgroundColor: "transparent",
-                color: "rgba(255,255,255,0.75)",
+                backgroundColor: "#00C2D1",
+                color: "#001518",
                 fontSize: "12px",
+                fontWeight: 800,
                 cursor: "pointer",
               }}
             >
-              ↻ 새로고침
+              + 수기 등록
             </button>
-          </div>
-        </div>
-
-        <p className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: "11px", color: "rgba(255,255,255,0.48)" }}>
-          {tab === "pending" ? "대기건은 목록으로 확인하고 바로 확정 처리합니다." : "확정건은 다가오는 일정 기준으로 일자별 확인합니다."}
-        </p>
-      </div>
-
-      {/* Content */}
-      {filtered.length === 0 ? (
+          ) : null
+        }
+      />
+      {confirmedRows.length === 0 ? (
         <EmptyState />
-      ) : tab === "pending" ? (
-        <ReservationTable rows={filtered} {...tableProps} />
       ) : (
         <ByDateGridView
-          filtered={filtered}
+          filtered={confirmedRows}
           today={today}
           tableProps={tableProps}
         />
@@ -704,6 +700,18 @@ function ByDateGridView({
             cursor: "pointer",
           }}
         >
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-block",
+              width: "14px",
+              marginRight: "6px",
+              transform: showPastDates ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 150ms",
+            }}
+          >
+            ▶
+          </span>
           지난 일자 {pastEntries.length}일 {showPastDates ? "숨기기" : "보기"}
         </button>
       )}
@@ -1689,21 +1697,21 @@ function KpiCard({
 }) {
   return (
     <div
-      className="p-3 md:p-4"
+      className="p-2 md:p-4"
       style={{
-        backgroundColor: "#14171c",
+        backgroundColor: "#1b2027",
         border: `1px solid ${highlighted ? `${accent}88` : "rgba(255,255,255,0.08)"}`,
         borderRadius: "4px",
         boxShadow: highlighted ? `0 0 0 3px ${accent}22 inset` : "none",
       }}
     >
-      <p style={{ fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: "0.02em" }}>
+      <p style={{ fontSize: "9px", fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: "0.02em" }}>
         {label}
       </p>
-      <p className="mt-1 flex items-baseline gap-1">
+      <p className="mt-0.5 md:mt-1 flex items-baseline gap-1">
         <span
           style={{
-            fontSize: "clamp(20px, 4.5vw, 26px)",
+            fontSize: "clamp(15px, 3.6vw, 22px)",
             fontWeight: 900,
             color: accent,
             letterSpacing: "-0.02em",
@@ -1713,12 +1721,163 @@ function KpiCard({
           {value}
         </span>
         {unit && (
-          <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>
+          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>
             {unit}
           </span>
         )}
       </p>
     </div>
+  );
+}
+
+function AdminSectionHeader({
+  title,
+  count,
+  accent,
+  actions,
+}: {
+  title: string;
+  count: number;
+  accent: string;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="mb-2 flex items-center justify-between gap-2"
+      style={{
+        backgroundColor: "#14171c",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderLeft: `4px solid ${accent}`,
+        borderRadius: "4px",
+        padding: "8px 10px",
+      }}
+    >
+      <div className="min-w-0 flex items-baseline gap-2">
+        <h2 style={{ fontSize: "14px", color: "#fff", fontWeight: 900, letterSpacing: "-0.01em" }}>
+          {title}
+        </h2>
+        <span style={{ fontSize: "12px", color: accent, fontWeight: 900 }}>
+          {numberFmt.format(count)}
+        </span>
+      </div>
+      {actions && <div className="flex items-center gap-1.5 shrink-0">{actions}</div>}
+    </div>
+  );
+}
+
+function PopularProductsPanel({
+  products,
+  compact,
+}: {
+  products: Array<{ label: string; quantity: number; revenue: number; reservations: number }>;
+  compact?: boolean;
+}) {
+  const maxQuantity = Math.max(1, ...products.map((p) => p.quantity));
+  return (
+    <section
+      className={compact ? "" : "mb-4 md:mb-6"}
+      style={{
+        backgroundColor: "#1b2027",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "4px",
+        padding: "10px",
+      }}
+    >
+      <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
+        <div>
+          <h2 style={{ fontSize: "13px", fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>
+            인기상품
+          </h2>
+          <p style={{ marginTop: "1px", fontSize: "10px", color: "rgba(255,255,255,0.48)" }}>
+            확정 예약 기준
+          </p>
+        </div>
+        {products.length > 0 && (
+          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", fontWeight: 700 }}>
+            Top {products.length}
+          </span>
+        )}
+      </div>
+
+      {products.length === 0 ? (
+        <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+          아직 집계할 확정 예약이 없습니다.
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          {products.map((p, index) => {
+            const width = `${Math.max(8, Math.round((p.quantity / maxQuantity) * 100))}%`;
+            return (
+              <div
+                key={p.label}
+                className="grid grid-cols-[24px_minmax(0,1fr)] sm:grid-cols-[28px_minmax(0,1fr)_auto] gap-2 sm:gap-3 items-center"
+              >
+                <div
+                  style={{
+                    width: "24px",
+                    height: "24px",
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: "2px",
+                    backgroundColor: index === 0 ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.06)",
+                    color: index === 0 ? "#34d399" : "rgba(255,255,255,0.62)",
+                    fontSize: "10px",
+                    fontWeight: 900,
+                  }}
+                >
+                  {index + 1}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "rgba(255,255,255,0.9)",
+                        fontWeight: 800,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={p.label}
+                    >
+                      {p.label}
+                    </div>
+                    <div className="sm:hidden" style={{ fontSize: "10px", color: "#34d399", fontWeight: 850 }}>
+                      {p.quantity}명
+                    </div>
+                  </div>
+                  <div
+                    className="mt-1"
+                    style={{
+                      height: "5px",
+                      borderRadius: "2px",
+                      backgroundColor: "rgba(255,255,255,0.08)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width,
+                        height: "100%",
+                        backgroundColor: index === 0 ? "#34d399" : "#00d5e6",
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="hidden sm:block text-right" style={{ minWidth: "150px" }}>
+                  <div style={{ fontSize: "11px", color: "#34d399", fontWeight: 900 }}>
+                    {numberFmt.format(p.quantity)}명
+                  </div>
+                  <div style={{ marginTop: "1px", fontSize: "10px", color: "rgba(255,255,255,0.48)" }}>
+                    {p.reservations}건 · {won(p.revenue)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
