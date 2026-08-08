@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
-// 실도메인: 건전한레저.com (IDN → Punycode)
-const FALLBACK_BASE = "https://xn--z69ap3to0moa491o.com";
+// 실도메인: www.건전한레저.com (IDN → Punycode). Vercel Domains 의 Primary 와 일치.
+const FALLBACK_BASE = "https://www.xn--z69ap3to0moa491o.com";
 
 function siteBase(): string {
   const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();

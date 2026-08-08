@@ -53,6 +53,12 @@ export async function generateMetadata({
     alt: dict.meta.ogTitle,
   };
 
+  const naverVerification = process.env.NAVER_SITE_VERIFICATION?.trim();
+  const googleVerification = process.env.GOOGLE_SITE_VERIFICATION?.trim();
+  const verification: NonNullable<Metadata["verification"]> = {};
+  if (googleVerification) verification.google = googleVerification;
+  if (naverVerification) verification.other = { "naver-site-verification": naverVerification };
+
   return {
     metadataBase: SITE_URL ? new URL(SITE_URL) : undefined,
     title: dict.meta.title,
@@ -75,6 +81,7 @@ export async function generateMetadata({
       description: dict.meta.ogDescription,
       images: [OG_IMAGE_PATH],
     },
+    ...(googleVerification || naverVerification ? { verification } : {}),
   };
 }
 

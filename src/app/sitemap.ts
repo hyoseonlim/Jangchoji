@@ -1,8 +1,20 @@
 import type { MetadataRoute } from "next";
 import { defaultLocale, locales } from "@/i18n/config";
 
-// 실도메인: 건전한레저.com (IDN → Punycode)
-const FALLBACK_BASE = "https://xn--z69ap3to0moa491o.com";
+// 실도메인: www.건전한레저.com (IDN → Punycode). Vercel Domains 의 Primary 와 일치.
+const FALLBACK_BASE = "https://www.xn--z69ap3to0moa491o.com";
+
+// activities/[slug] 페이지의 유효한 슬러그 (page.tsx 와 일치).
+const ACTIVITY_SLUGS = [
+  "rides",
+  "ski",
+  "wakesurf",
+  "waterpark",
+  "bbq",
+  "cafe",
+  "rooftop",
+  "stay",
+] as const;
 
 function siteBase(): string {
   const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
@@ -40,6 +52,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "daily",
       priority: 0.8,
     });
+
+    for (const slug of ACTIVITY_SLUGS) {
+      entries.push({
+        url: `${base}/${locale}/activities/${slug}`,
+        lastModified: now,
+        changeFrequency: "monthly",
+        priority: 0.7,
+      });
+    }
   }
 
   return entries;
