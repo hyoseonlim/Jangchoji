@@ -1091,6 +1091,20 @@ function reservationNights(row: AdminReservationRow): number {
   );
 }
 
+function reservationDateRangeText(row: AdminReservationRow): string {
+  if (row.reservation_type === "day_use") {
+    return `${formatDateWithDay(row.check_in)} 당일`;
+  }
+  return `${formatDateWithDay(row.check_in)} → ${formatDateWithDay(row.check_out)}`;
+}
+
+function reservationISODateRangeText(row: AdminReservationRow): string {
+  if (row.reservation_type === "day_use") {
+    return `${row.check_in} 당일`;
+  }
+  return `${row.check_in} ~ ${row.check_out}`;
+}
+
 function MobileReservationCard({
   row,
   today,
@@ -1102,10 +1116,9 @@ function MobileReservationCard({
 }) {
   const c = STATUS_COLOR[row.status];
   const isToday = row.check_in === today;
-  const dateText =
-    row.reservation_type === "day_use"
-      ? `${formatDateWithDay(row.check_in)} 당일`
-      : `${formatDateWithDay(row.check_in)} · ${reservationNights(row)}박`;
+  const dateText = row.reservation_type === "day_use"
+    ? reservationDateRangeText(row)
+    : `${formatDateWithDay(row.check_in)} · ${reservationNights(row)}박`;
   return (
     <button
       type="button"
@@ -1241,7 +1254,7 @@ function ReservationTableRow({
         </td>
         <td style={tdStyle}>
           <div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
-            {formatDateWithDay(row.check_in)} → {formatDateWithDay(row.check_out)}
+            {reservationDateRangeText(row)}
           </div>
           <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", marginTop: "1px" }}>
             {row.reservation_type === "day_use" ? "당일" : `${nights}박`}
@@ -2210,7 +2223,7 @@ function AssignRoomDialog({
           #{target.id} · {target.representative?.name ?? "-"} · {target.guests_count}명
         </h2>
         <p style={{ marginTop: "6px", fontSize: "12px", color: "rgba(255,255,255,0.65)" }}>
-          {target.check_in} ~ {target.check_out} · {target.package_label}
+          {reservationISODateRangeText(target)} · {target.package_label}
         </p>
 
         <div style={{ marginTop: "16px" }}>
@@ -2373,7 +2386,7 @@ function RoomMoveDialog({
           호실 바꾸기
         </h2>
         <p style={{ marginTop: "6px", fontSize: "12px", color: "rgba(255,255,255,0.65)" }}>
-          #{target.id} · {target.representative?.name ?? "-"} · {target.check_in}~{target.check_out}
+          #{target.id} · {target.representative?.name ?? "-"} · {reservationISODateRangeText(target)}
         </p>
 
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">

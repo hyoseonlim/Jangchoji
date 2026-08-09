@@ -18,7 +18,7 @@ export const metadata = {
 const roomItems = [
   "간단한 취사도구, 전자레인지, 냉장고가 구비되어 있습니다.",
   "밥솥과 물컵은 제공되지 않습니다.",
-  "세면도구(칫솔, 치약, 수건 등)는 개별 준비해 주세요.",
+  "세면도구 및 샤워용품은 구비되어 있지 않으니 개별 지참 부탁드립니다. (수건은 제공)",
 ];
 
 export default async function StayReservationInfoPage({

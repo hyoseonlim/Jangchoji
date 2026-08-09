@@ -14,7 +14,6 @@ export const operatingHours = [
     title: "성수기",
     period: "7월 17일 ~ 8월 16일",
     hours: "오전 9:00 ~ 오후 6:00",
-    note: "점심시간 오후 1:00 ~ 2:00",
   },
   {
     title: "비수기 평일",
@@ -178,14 +177,12 @@ export function OperatingHoursSection() {
             <p className="mt-3 text-black" style={{ fontSize: "14px", fontWeight: 800 }}>
               {item.hours}
             </p>
-            {item.note && (
-              <p className="mt-1 text-black/60" style={{ fontSize: "12px" }}>
-                {item.note}
-              </p>
-            )}
           </article>
         ))}
       </div>
+      <p className="mt-3 text-black/65" style={{ fontSize: "13px" }}>
+        점심시간은 모든 기간 공통으로 오후 1:00 ~ 2:00입니다.
+      </p>
     </InfoSection>
   );
 }
