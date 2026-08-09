@@ -1,0 +1,53 @@
+import { notFound } from "next/navigation";
+import { getDictionary, isLocale, type Locale } from "@/i18n";
+import {
+  CommonUseSection,
+  ContactSection,
+  InfoSection,
+  InfoShell,
+  OperatingHoursSection,
+  Row,
+} from "../../reservation-info/_components";
+
+export const metadata = {
+  title: "당일 패키지 이용안내 · 건전한 레저",
+  description: "건전한 레저 당일 패키지 예약 고객을 위한 이용 정보 안내",
+};
+
+export default async function DayUseInfoShortLinkPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
+  const dict = getDictionary(locale as Locale);
+
+  return (
+    <InfoShell
+      locale={locale as Locale}
+      eyebrow="DAY PACKAGE"
+      title="당일 패키지 이용안내"
+      description="예약해 주셔서 감사합니다. 당일 패키지 이용 정보를 안내드립니다."
+      homeLinkPosition="bottom"
+    >
+      <InfoSection title="이용 안내">
+        <p className="text-black/75" style={{ lineHeight: 1.8 }}>
+          예약하신 이용일에 현장 접수 후 워터파크 및 수상레저를 이용하실 수 있습니다.
+          도착 후 직원 안내에 따라 이용권 확인과 안전 안내를 진행해 주세요.
+        </p>
+      </InfoSection>
+
+      <InfoSection title="이용 시간">
+        <dl className="space-y-2">
+          <Row k="접수" v="예약 당일 현장 접수" />
+          <Row k="이용" v="놀이기구 운영시간 내 이용" />
+        </dl>
+      </InfoSection>
+
+      <OperatingHoursSection />
+      <CommonUseSection />
+      <ContactSection address={dict.brand.address.road} phone={dict.brand.phone} />
+    </InfoShell>
+  );
+}

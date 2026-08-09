@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { BedDouble, Flame, Goal, Waves } from "lucide-react";
 import type { Dictionary, Locale } from "@/i18n";
 import {
   CONFIG_LABELS,
@@ -108,6 +109,70 @@ function formatDateKo(iso: string): string {
 }
 
 const EMPTY_SELECTIONS: PackageSelections = {};
+const BEST_PACKAGE_KEYS = new Set<ConfigKey>(["allday_bbq", "day_allday"]);
+type PackageKeyGroup = {
+  title: string;
+  icon: "stay" | "bbq" | "water" | "single";
+  badge?: string;
+  keys: readonly ConfigKey[];
+};
+const STAY_PACKAGE_GROUPS: readonly PackageKeyGroup[] = [
+  {
+    title: "숙박 & 놀이기구",
+    icon: "stay",
+    keys: ["rides3", "rides5", "morning", "afternoon", "allday"],
+  },
+  {
+    title: "숙박 & 놀이기구 & BBQ",
+    icon: "bbq",
+    badge: "추천",
+    keys: ["rides3_bbq", "rides5_bbq", "morning_bbq", "afternoon_bbq", "allday_bbq"],
+  },
+] as const;
+const DAY_USE_PACKAGE_GROUPS: readonly PackageKeyGroup[] = [
+  {
+    title: "놀이기구 패키지",
+    icon: "water",
+    keys: ["day_rides3", "day_rides5", "day_morning", "day_afternoon", "day_allday"],
+  },
+  {
+    title: "단품 이용",
+    icon: "single",
+    keys: [
+      "day_flyfish",
+      "day_waterpark",
+      "day_boat_tour",
+      "day_nami_tour",
+      "day_wake_lesson",
+      "day_wake_riding",
+      "day_inboat",
+    ],
+  },
+] as const;
+
+function PackageGroupIcon({ name }: { name: PackageKeyGroup["icon"] }) {
+  const Icon =
+    name === "stay"
+      ? BedDouble
+      : name === "bbq"
+        ? Flame
+        : name === "water"
+          ? Waves
+          : Goal;
+  return (
+    <Icon
+      aria-hidden="true"
+      size={15}
+      strokeWidth={2.2}
+      style={{
+        display: "inline-block",
+        marginRight: "6px",
+        verticalAlign: "-2px",
+        color: "rgba(0,0,0,0.72)",
+      }}
+    />
+  );
+}
 
 function groupSizeForGuests(guestsCount: number): GroupSize {
   if (guestsCount <= 2) return "2";
@@ -589,10 +654,7 @@ export function ReserveForm({
           : "-";
 
   const quantityMatch = totalQuantity === guestsCount;
-  const visiblePackageKeys =
-    reservationMode === "stay"
-      ? STAY_CONFIG_KEYS
-      : DAY_USE_CONFIG_KEYS.filter((key) => key !== "day_bbq");
+  const packageGroups = reservationMode === "stay" ? STAY_PACKAGE_GROUPS : DAY_USE_PACKAGE_GROUPS;
   const availabilityBlocked =
     availability.state === "unavailable" || availability.state === "error";
 
@@ -818,102 +880,147 @@ export function ReserveForm({
           )}
         </div>
 
-        <ul className="space-y-2">
-          {visiblePackageKeys.map((key) => {
-            const quantity = selections[key] ?? 0;
-            const perPerson =
-              reservationMode === "stay"
-                ? perPersonByConfig[key]
-                : DAY_USE_PRICES[key as keyof typeof DAY_USE_PRICES];
-            const range = priceRanges[key];
-            const isInboat = reservationMode === "day_use" && key === "day_inboat";
-            const inboatStartDisabled = isInboat && quantity === 0 && remainingQuantity < MIN_INBOAT_GUESTS;
-            const disabled = (remainingQuantity === 0 && quantity === 0) || inboatStartDisabled;
-            const active = quantity > 0;
-            return (
-              <li
-                key={key}
-                className="p-3 md:p-4 flex items-center justify-between gap-3"
-                style={{
-                  backgroundColor: active ? "rgba(0,194,209,0.06)" : "#fff",
-                  border: active ? "1px solid #00C2D1" : "1px solid rgba(0,0,0,0.1)",
-                  borderRadius: "2px",
-                }}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="text-black" style={{ fontSize: "13px", fontWeight: 700 }}>
-                    {CONFIG_LABELS[key]}
-                  </div>
-                  <div
-                    className="mt-0.5 text-black/60"
-                    style={{ fontSize: "12px", lineHeight: 1.5 }}
-                  >
-                    {perPerson != null ? (
-                      <>
-                        1인 총 <strong className="text-black">{won(perPerson)}</strong>
-                        {reservationMode === "stay" && <span className="text-black/45"> ({nights}박)</span>}
-                      </>
-                    ) : range ? (
-                      <>
-                        1인 1박{" "}
-                        <strong className="text-black">
-                          {range.min === range.max
-                            ? won(range.min)
-                            : `${won(range.min)} ~ ${won(range.max)}`}
-                        </strong>
-                      </>
-                    ) : (
-                      <span>-</span>
-                    )}
-                    {quantity > 0 && perPerson != null && (
-                      <span className="ml-2 text-black" style={{ fontWeight: 700 }}>
-                        · 소계 {won(perPerson * quantity)}
-                      </span>
-                    )}
-                    {isInboat && (
-                      <span className="block text-black/45 mt-0.5">
-                        4인 이상부터 선택 가능
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="inline-flex items-center gap-1.5 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => changeQuantity(key, -1)}
-                    disabled={quantity === 0}
-                    style={{ ...smallStepBtn, opacity: quantity === 0 ? 0.35 : 1 }}
-                    aria-label="수량 감소"
-                  >
-                    −
-                  </button>
+        <div className="space-y-4">
+          {packageGroups.map((group) => (
+            <div key={group.title}>
+              <div className="mb-2 flex items-center gap-2">
+                <h3 className="text-black" style={{ fontSize: "14px", fontWeight: 900, letterSpacing: "-0.01em" }}>
+                  <PackageGroupIcon name={group.icon} />
+                  {group.title}
+                </h3>
+                {group.badge && (
                   <span
                     style={{
-                      minWidth: "28px",
-                      textAlign: "center",
-                      fontWeight: 800,
-                      fontSize: "15px",
+                      padding: "2px 6px",
+                      borderRadius: "2px",
+                      backgroundColor: "rgba(0,194,209,0.1)",
+                      color: "#00838f",
+                      fontSize: "10px",
+                      fontWeight: 900,
                     }}
                   >
-                    {quantity}
+                    {group.badge}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => changeQuantity(key, +1)}
-                    disabled={disabled || perPerson == null}
-                    style={{
-                      ...smallStepBtn,
-                      opacity: disabled || perPerson == null ? 0.35 : 1,
-                    }}
-                    aria-label="수량 증가"
-                  >
-                    +
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                )}
+              </div>
+              <ul className="space-y-2">
+                {group.keys.map((key) => {
+                  const quantity = selections[key] ?? 0;
+                  const perPerson =
+                    reservationMode === "stay"
+                      ? perPersonByConfig[key]
+                      : DAY_USE_PRICES[key as keyof typeof DAY_USE_PRICES];
+                  const range = priceRanges[key];
+                  const isInboat = reservationMode === "day_use" && key === "day_inboat";
+                  const inboatStartDisabled = isInboat && quantity === 0 && remainingQuantity < MIN_INBOAT_GUESTS;
+                  const disabled = (remainingQuantity === 0 && quantity === 0) || inboatStartDisabled;
+                  const active = quantity > 0;
+                  const best = BEST_PACKAGE_KEYS.has(key);
+                  return (
+                    <li
+                      key={key}
+                      className="p-3 md:p-4 flex items-center justify-between gap-3"
+                      style={{
+                        backgroundColor: active ? "rgba(0,194,209,0.06)" : "#fff",
+                        border: active ? "1px solid #00C2D1" : "1px solid rgba(0,0,0,0.1)",
+                        borderRadius: "2px",
+                      }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="text-black" style={{ fontSize: "13px", fontWeight: 700 }}>
+                            {CONFIG_LABELS[key]}
+                          </div>
+                          {best && (
+                            <span
+                              style={{
+                                padding: "2px 6px",
+                                borderRadius: "2px",
+                                backgroundColor: "#ff4d00",
+                                color: "#fff",
+                                fontSize: "10px",
+                                fontWeight: 900,
+                                lineHeight: 1.2,
+                                letterSpacing: "0.04em",
+                              }}
+                            >
+                              BEST
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          className="mt-0.5 text-black/60"
+                          style={{ fontSize: "12px", lineHeight: 1.5 }}
+                        >
+                          {perPerson != null ? (
+                            <>
+                              1인 총 <strong className="text-black">{won(perPerson)}</strong>
+                              {reservationMode === "stay" && <span className="text-black/45"> ({nights}박)</span>}
+                            </>
+                          ) : range ? (
+                            <>
+                              1인 1박{" "}
+                              <strong className="text-black">
+                                {range.min === range.max
+                                  ? won(range.min)
+                                  : `${won(range.min)} ~ ${won(range.max)}`}
+                              </strong>
+                            </>
+                          ) : (
+                            <span>-</span>
+                          )}
+                          {quantity > 0 && perPerson != null && (
+                            <span className="ml-2 text-black" style={{ fontWeight: 700 }}>
+                              · 소계 {won(perPerson * quantity)}
+                            </span>
+                          )}
+                          {isInboat && (
+                            <span className="block text-black/45 mt-0.5">
+                              4인 이상부터 선택 가능
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="inline-flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => changeQuantity(key, -1)}
+                          disabled={quantity === 0}
+                          style={{ ...smallStepBtn, opacity: quantity === 0 ? 0.35 : 1 }}
+                          aria-label="수량 감소"
+                        >
+                          −
+                        </button>
+                        <span
+                          style={{
+                            minWidth: "28px",
+                            textAlign: "center",
+                            fontWeight: 800,
+                            fontSize: "15px",
+                          }}
+                        >
+                          {quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => changeQuantity(key, +1)}
+                          disabled={disabled || perPerson == null}
+                          style={{
+                            ...smallStepBtn,
+                            opacity: disabled || perPerson == null ? 0.35 : 1,
+                          }}
+                          aria-label="수량 증가"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
         {reservationMode === "day_use" && (
           <div className="mt-3 p-3 bg-white" style={{ border: "1px solid rgba(0,0,0,0.1)", borderRadius: "2px" }}>
             <div className="flex items-center justify-between gap-3">

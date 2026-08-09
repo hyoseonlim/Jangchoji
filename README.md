@@ -1,4 +1,30 @@
-  ## 이미지 관리
+## 문자 발송
+
+관리자가 예약을 확정하면 대표 예약자 전화번호로 SOLAPI 문자를 발송합니다.
+환경변수가 없거나 번호 형식이 맞지 않으면 예약은 정상 접수되고 문자만 조용히 스킵됩니다.
+
+### SOLAPI 설정
+
+1. SOLAPI 콘솔에서 계정 실명인증을 완료합니다.
+2. 문자에 사용할 발신번호를 사전 등록합니다.
+3. API Key / API Secret을 발급합니다.
+4. 로컬 `.env.local` 과 Vercel Environment Variables에 아래 값을 추가합니다.
+
+```bash
+SOLAPI_API_KEY=발급받은_API_KEY
+SOLAPI_API_SECRET=발급받은_API_SECRET
+SOLAPI_FROM=01020072883
+SOLAPI_CONTACT_PHONE=010-9159-6448
+```
+
+`SOLAPI_FROM`은 SOLAPI에 등록된 발신번호이며, 하이픈 없이 숫자만 넣습니다.
+일시적으로 문자 발송을 끄려면 아래 값을 추가합니다.
+
+```bash
+SOLAPI_RESERVATION_SMS_ENABLED=false
+```
+
+## 이미지 관리
 
   이미지 파일은 **Cloudflare R2**에서 서빙됩니다 (`https://img.건전한레저.com`).
   Vercel bandwidth 절약을 위해 `public/images/` 는 `.gitignore` 처리되어 있고,

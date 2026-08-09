@@ -978,29 +978,42 @@ export async function getRoomAvailability(
   return result;
 }
 
-export async function listReservationsForAdmin(opts: {
-  status?: ReservationStatus;
-  mask?: boolean;
-}): Promise<AdminReservationRow[]> {
-  const supabase = getSupabaseAdmin();
-  let query = supabase
-    .from("reservations")
-    .select(
-      "id,reservation_type,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
-    )
-    .order("created_at", { ascending: false })
-    .limit(500);
-  if (opts.status) query = query.eq("status", opts.status);
+type AdminReservationDbRow = {
+  id: number;
+  reservation_type: string;
+  status: ReservationStatus;
+  packages: unknown;
+  package_label: string;
+  room_key: string | null;
+  season: string;
+  guests_count: number;
+  pet_count?: number;
+  check_in: string;
+  check_out: string;
+  total_price: number;
+  memo: string | null;
+  depositor_name_enc: string | null;
+  source: string | null;
+  created_by_admin: string | null;
+  price_override: number | null;
+  price_note: string | null;
+  last_edited_at: string | null;
+  last_edited_by: string | null;
+  created_at: string;
+  updated_at: string;
+  reservation_guests?: Array<{
+    name_enc: string;
+    phone_enc: string | null;
+    is_representative: boolean;
+  }>;
+};
 
-  const { data, error } = await query;
-  if (error) throw new Error(`예약 조회 실패: ${error.message}`);
-
-  return (data ?? []).map((r) => {
-    const guestRows = (r.reservation_guests ?? []) as Array<{
-      name_enc: string;
-      phone_enc: string | null;
-      is_representative: boolean;
-    }>;
+function mapAdminReservationRows(
+  rows: AdminReservationDbRow[],
+  opts: { mask: boolean },
+): AdminReservationRow[] {
+  return rows.map((r) => {
+    const guestRows = r.reservation_guests ?? [];
     const decrypted: AdminGuestDetail[] = guestRows.map((g) => {
       const n = decrypt(g.name_enc);
       const p = g.phone_enc ? decrypt(g.phone_enc) : null;
@@ -1024,7 +1037,7 @@ export async function listReservationsForAdmin(opts: {
       room_key: isRoomKey(r.room_key) ? r.room_key : null,
       season: r.season,
       guests_count: r.guests_count,
-      pet_count: (r as { pet_count?: number }).pet_count ?? 0,
+      pet_count: r.pet_count ?? 0,
       check_in: r.check_in,
       check_out: r.check_out,
       total_price: r.total_price,
@@ -1043,6 +1056,45 @@ export async function listReservationsForAdmin(opts: {
       guests: decrypted,
     };
   });
+}
+
+export async function listReservationsForAdmin(opts: {
+  status?: ReservationStatus;
+  mask?: boolean;
+}): Promise<AdminReservationRow[]> {
+  const supabase = getSupabaseAdmin();
+  let query = supabase
+    .from("reservations")
+    .select(
+      "id,reservation_type,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
+    )
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (opts.status) query = query.eq("status", opts.status);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`예약 조회 실패: ${error.message}`);
+
+  return mapAdminReservationRows((data ?? []) as AdminReservationDbRow[], { mask: opts.mask ?? false });
+}
+
+export async function getReservationForAdmin(
+  reservationId: number,
+  opts: { mask?: boolean } = {},
+): Promise<AdminReservationRow | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("reservations")
+    .select(
+      "id,reservation_type,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
+    )
+    .eq("id", reservationId)
+    .single();
+  if (error) throw new Error(`예약 조회 실패: ${error.message}`);
+  if (!data) return null;
+
+  const [row] = mapAdminReservationRows([data as AdminReservationDbRow], { mask: opts.mask ?? false });
+  return row ?? null;
 }
 
 export async function transitionReservation(
