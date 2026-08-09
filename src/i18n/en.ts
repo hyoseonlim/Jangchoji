@@ -23,10 +23,10 @@ export const en: Dictionary = {
   meta: {
     title: "Water leisure · Gapyeong Water Sports & Stay",
     description:
-      "Water leisure in Gapyeong. 8 water play rides, water-ski, wakeboard, wakesurf, water park, floating cafe, rooftop lounge, unlimited BBQ, and accommodation — all in one place. SINCE 2025.",
+      "No-wait Gapyeong water park! Just 3 steps from pension to water park — an all-in-one package: on-site pension, water leisure, water-ski, and BBQ.",
     ogTitle: "Water leisure · Gapyeong",
     ogDescription:
-      "Water Play Rides · Water-ski · Wakeboard · Water Park · Floating Cafe · Rooftop · BBQ · Stay. Water leisure in Gapyeong.",
+      "No-wait Gapyeong water park! Just 3 steps from pension to water park — an all-in-one package: on-site pension, water leisure, water-ski, and BBQ.",
     siteName: "Water leisure",
   },
 
