@@ -427,8 +427,7 @@ export const en: Dictionary = {
           },
         ],
         info: [
-          "Unlimited BBQ service hours: 19:00 – 21:00 (weekends)",
-          "After 21:00 guests are welcome to keep enjoying any remaining food at their seats",
+          "Unlimited BBQ service starts from 19:00",
           "Includes: Meat · rice · sausage · kimchi · ssamjang · ssammu · mushroom · disposables (Subject to change)",
         ],
       },

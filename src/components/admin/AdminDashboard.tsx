@@ -7,7 +7,7 @@ import type {
   ReservationHistoryEntry,
   ReservationStatus,
 } from "@/lib/reservations";
-import type { PackagePriceRow } from "@/lib/pricing";
+import { CONFIG_LABELS, type PackagePriceRow } from "@/lib/pricing";
 import { ROOMS, ROOM_KEYS, type RoomKey } from "@/lib/rooms";
 import { AdminModal, type AdminModalRequest } from "./AdminModal";
 import { ReservationEditor } from "./ReservationEditor";
@@ -172,7 +172,7 @@ export function AdminDashboard({
       const seenInReservation = new Set<string>();
       for (const p of r.packages) {
         const cur = productMap.get(p.configKey) ?? {
-          label: p.label,
+          label: CONFIG_LABELS[p.configKey] ?? p.label,
           quantity: 0,
           revenue: 0,
           reservations: 0,
@@ -1354,8 +1354,8 @@ function ExpandedDetail({
             className="mt-1 space-y-0.5"
             style={{ fontSize: "12px", color: "rgba(255,255,255,0.85)" }}
           >
-            {row.packages.map((p) => (
-              <li key={p.configKey} className="flex justify-between gap-3">
+            {row.packages.map((p, idx) => (
+              <li key={`${p.configKey}-${p.label}-${idx}`} className="flex justify-between gap-3">
                 <span>
                   {p.label} <span style={{ color: "rgba(255,255,255,0.5)" }}>× {p.quantity}명</span>
                 </span>
@@ -1409,6 +1409,13 @@ function ExpandedDetail({
                 </span>
               )}
             </>
+          ) : (
+            <Dim>-</Dim>
+          )}
+        </MiniField>
+        <MiniField label="환불계좌">
+          {row.refund_account ? (
+            <span style={{ color: "#facc15", fontWeight: 800 }}>{row.refund_account}</span>
           ) : (
             <Dim>-</Dim>
           )}

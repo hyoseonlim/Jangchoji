@@ -23,6 +23,7 @@ import {
   seasonForDate,
   summarizePackageLines,
   summarizeSeason,
+  toISODate,
 } from "./pricing";
 import {
   ROOMS,
@@ -84,6 +85,7 @@ function todayISO(): string {
 // 고객 예약 : 인원과 패키지만 지정. 방 배정은 관리자가 확정 시 결정.
 export type CreateReservationInput = {
   packageSelections: PackageSelections;
+  packageSelectionsByNight?: Record<string, PackageSelections>;
   guestsCount: number;
   petCount?: number;
   checkIn: string;
@@ -91,6 +93,7 @@ export type CreateReservationInput = {
   guests: GuestInput[];
   memo?: string;
   depositorName?: string;
+  refundAccount?: string;
   paymentConfirmed: boolean;
   refundPolicyAgreed: boolean;
 };
@@ -102,6 +105,7 @@ export type CreateDayUseReservationInput = {
   guests: GuestInput[];
   memo?: string;
   depositorName?: string;
+  refundAccount?: string;
   paymentConfirmed: boolean;
   policyAgreed: boolean;
 };
@@ -120,6 +124,7 @@ export type AdminReservationInput = {
   guests: GuestInput[]; // 대표자 1명 (이름·전화 필수), 동행은 선택 (이름 필수)
   memo?: string;
   depositorName?: string; // 없으면 대표자 이름
+  refundAccount?: string;
   status: "pending" | "confirmed";
   priceOverride?: number; // 지정 시 total_price 로 저장. 미지정 시 계산가 사용
   priceNote?: string; // 오버라이드 사유
@@ -135,6 +140,13 @@ export type QuoteResult = {
   season: "peak" | "off" | "mixed";
   packageLabel: string;
 };
+
+function formatNightLabel(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][dt.getDay()];
+  return `${m}/${d}(${weekday})`;
+}
 
 export async function listActivePackagePrices(): Promise<PackagePriceRow[]> {
   const supabase = getSupabaseAdmin();
@@ -199,9 +211,9 @@ export async function quoteReservation(
   const result = computeSelectionLines(perPersonByConfig, packageSelections);
   if (!result) throw new Error("선택한 패키지 요금을 계산할 수 없습니다.");
   if (result.lines.length === 0) throw new Error("최소 1개 이상의 패키지를 선택해주세요.");
-  if (!relaxed && result.totalQuantity !== guestsCount) {
+  if (!relaxed && result.totalQuantity < guestsCount) {
     throw new Error(
-      `선택한 패키지 수량(${result.totalQuantity}명)이 예약 인원(${guestsCount}명)과 일치해야 합니다.`,
+      `선택한 패키지 수량(${result.totalQuantity}명)이 예약 인원(${guestsCount}명) 이상이어야 합니다.`,
     );
   }
 
@@ -222,6 +234,78 @@ export async function quoteReservation(
   };
 }
 
+export async function quoteNightlyReservation(
+  packageSelectionsByNight: Record<string, PackageSelections>,
+  checkIn: string,
+  checkOut: string,
+  guestsCount: number,
+  opts: { groupSize?: GroupSize; petCount?: number } = {},
+): Promise<QuoteResult> {
+  const { groupSize = DEFAULT_GROUP_SIZE, petCount = 0 } = opts;
+  const safePetCount = Math.max(0, Math.floor(petCount || 0));
+  const petFee = safePetCount * PET_FEE_PER_DOG;
+  const nights = nightsBetween(checkIn, checkOut);
+  if (nights.length === 0) throw new Error("체크아웃은 체크인 다음날 이후여야 합니다.");
+  if (!Number.isInteger(guestsCount) || guestsCount < 1) throw new Error("인원 수가 올바르지 않습니다.");
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("products")
+    .select("config_key, season, day_type, price")
+    .eq("group_size", groupSize)
+    .eq("is_active", true);
+  if (error) throw new Error(`가격 조회 실패: ${error.message}`);
+  if (!data || data.length === 0) throw new Error("상품 가격이 등록되지 않았습니다.");
+
+  const rows: PackagePriceRow[] = data
+    .filter((r) => isStayConfigKey(r.config_key))
+    .map((r) => ({
+      config_key: r.config_key,
+      group_size: groupSize,
+      season: r.season as PackagePriceRow["season"],
+      day_type: r.day_type as PackagePriceRow["day_type"],
+      price: r.price,
+    }));
+
+  const lines: PackageLine[] = [];
+  let packageTotal = 0;
+  for (const night of nights) {
+    const nightStart = toISODate(night);
+    const selections = packageSelectionsByNight[nightStart] ?? {};
+    const prices = perPersonStayTotalByConfig(rows, nightStart, addDaysISO(nightStart, 1));
+    const result = computeSelectionLines(prices, selections);
+    if (!result || result.lines.length === 0) {
+      throw new Error(`${formatNightLabel(nightStart)} 패키지를 1개 이상 선택해주세요.`);
+    }
+    if (result.totalQuantity < guestsCount) {
+      throw new Error(`${formatNightLabel(nightStart)} 패키지 수량은 예약 인원(${guestsCount}명) 이상이어야 합니다.`);
+    }
+    packageTotal += result.total;
+    for (const line of result.lines) {
+      lines.push({
+        ...line,
+        label: `${formatNightLabel(nightStart)} ${line.label}`,
+      });
+    }
+  }
+
+  let packageLabel = summarizePackageLines(lines);
+  if (safePetCount > 0) {
+    packageLabel += ` + 반려견 ${safePetCount}마리`;
+  }
+
+  return {
+    total: packageTotal + petFee,
+    packageTotal,
+    petFee,
+    guestsCount,
+    petCount: safePetCount,
+    lines,
+    season: summarizeSeason(nights),
+    packageLabel,
+  };
+}
+
 export function quoteDayUseReservation(
   packageSelections: PackageSelections,
   guestsCount: number,
@@ -234,9 +318,9 @@ export function quoteDayUseReservation(
   if ((packageSelections.day_inboat ?? 0) > 0 && (packageSelections.day_inboat ?? 0) < MIN_INBOAT_GUESTS) {
     throw new Error("럭셔리 인보트 보팅은 4인 이상부터 선택 가능합니다.");
   }
-  if (result.totalQuantity !== guestsCount) {
+  if (result.totalQuantity < guestsCount) {
     throw new Error(
-      `선택한 패키지 수량(${result.totalQuantity}명)이 예약 인원(${guestsCount}명)과 일치해야 합니다.`,
+      `선택한 패키지 수량(${result.totalQuantity}명)이 예약 인원(${guestsCount}명) 이상이어야 합니다.`,
     );
   }
   const packageLabel = summarizePackageLines(result.lines);
@@ -379,13 +463,21 @@ export async function createReservation(input: CreateReservationInput) {
 
   const safePetCount = Math.max(0, Math.floor(input.petCount || 0));
 
-  const quote = await quoteReservation(
-    input.packageSelections,
-    input.checkIn,
-    input.checkOut,
-    input.guestsCount,
-    { groupSize: groupSizeForGuests(input.guestsCount), petCount: safePetCount },
-  );
+  const quote = input.packageSelectionsByNight
+    ? await quoteNightlyReservation(
+        input.packageSelectionsByNight,
+        input.checkIn,
+        input.checkOut,
+        input.guestsCount,
+        { groupSize: groupSizeForGuests(input.guestsCount), petCount: safePetCount },
+      )
+    : await quoteReservation(
+        input.packageSelections,
+        input.checkIn,
+        input.checkOut,
+        input.guestsCount,
+        { groupSize: groupSizeForGuests(input.guestsCount), petCount: safePetCount },
+      );
 
   const capacityOk = await checkCapacity(input.checkIn, input.checkOut, input.guestsCount);
   if (!capacityOk) {
@@ -393,6 +485,7 @@ export async function createReservation(input: CreateReservationInput) {
   }
 
   const depositorRaw = (input.depositorName ?? "").trim() || reps[0].name.trim();
+  const refundAccountRaw = (input.refundAccount ?? "").trim();
   const supabase = getSupabaseAdmin();
 
   const { data: reservation, error: rErr } = await supabase
@@ -410,6 +503,7 @@ export async function createReservation(input: CreateReservationInput) {
       status: "pending",
       memo: input.memo ?? null,
       depositor_name_enc: encrypt(depositorRaw),
+      refund_account_enc: refundAccountRaw ? encrypt(refundAccountRaw) : null,
       room_key: null,
       source: "online",
     })
@@ -459,6 +553,7 @@ export async function createDayUseReservation(input: CreateDayUseReservationInpu
 
   const quote = quoteDayUseReservation(input.packageSelections, input.guestsCount);
   const depositorRaw = (input.depositorName ?? "").trim() || reps[0].name.trim();
+  const refundAccountRaw = (input.refundAccount ?? "").trim();
   const supabase = getSupabaseAdmin();
 
   const { data: reservation, error: rErr } = await supabase
@@ -476,6 +571,7 @@ export async function createDayUseReservation(input: CreateDayUseReservationInpu
       status: "pending",
       memo: input.memo ?? null,
       depositor_name_enc: encrypt(depositorRaw),
+      refund_account_enc: refundAccountRaw ? encrypt(refundAccountRaw) : null,
       room_key: null,
       source: "online",
     })
@@ -683,6 +779,7 @@ export async function adminCreateReservation(
   const priceNote = input.priceOverride != null ? (input.priceNote ?? null) : null;
 
   const depositorRaw = (input.depositorName ?? "").trim() || reps[0].name.trim();
+  const refundAccountRaw = (input.refundAccount ?? "").trim();
   const supabase = getSupabaseAdmin();
 
   const { data: reservation, error: rErr } = await supabase
@@ -700,6 +797,7 @@ export async function adminCreateReservation(
       status: input.status,
       memo: input.memo ?? null,
       depositor_name_enc: encrypt(depositorRaw),
+      refund_account_enc: refundAccountRaw ? encrypt(refundAccountRaw) : null,
       room_key: input.roomKey,
       source: "manual",
       created_by_admin: admin.username,
@@ -747,6 +845,7 @@ type ReservationRow = {
   status: ReservationStatus;
   memo: string | null;
   depositor_name_enc: string | null;
+  refund_account_enc: string | null;
   room_key: string | null;
   source: string;
   created_by_admin: string | null;
@@ -805,6 +904,7 @@ export async function updateReservation(
 
   // guests 대표자 이름 (입금자명 자동 채움용)
   const depositorRaw = (input.depositorName ?? "").trim() || reps[0].name.trim();
+  const refundAccountRaw = input.refundAccount == null ? undefined : input.refundAccount.trim();
 
   // 변경 diff 계산 (기록용)
   const changes: FieldChange[] = [];
@@ -836,6 +936,10 @@ export async function updateReservation(
   // 입금자명 변경
   const prevDepositor = cur.depositor_name_enc ? decrypt(cur.depositor_name_enc) : "";
   push("depositorName", prevDepositor, depositorRaw);
+  if (refundAccountRaw !== undefined) {
+    const prevRefundAccount = cur.refund_account_enc ? decrypt(cur.refund_account_enc) : "";
+    push("refundAccount", prevRefundAccount, refundAccountRaw);
+  }
 
   // 실제 업데이트
   const { error: uErr } = await supabase
@@ -852,6 +956,12 @@ export async function updateReservation(
       status: input.status,
       memo: input.memo ?? null,
       depositor_name_enc: encrypt(depositorRaw),
+      refund_account_enc:
+        refundAccountRaw !== undefined
+          ? refundAccountRaw
+            ? encrypt(refundAccountRaw)
+            : null
+          : cur.refund_account_enc,
       room_key: input.roomKey,
       price_override: input.priceOverride ?? null,
       price_note: priceNote,
@@ -934,6 +1044,7 @@ export type AdminReservationRow = {
   total_price: number;
   memo: string | null;
   depositor_name: string | null;
+  refund_account: string | null;
   source: "online" | "manual";
   created_by_admin: string | null;
   price_override: number | null;
@@ -993,6 +1104,7 @@ type AdminReservationDbRow = {
   total_price: number;
   memo: string | null;
   depositor_name_enc: string | null;
+  refund_account_enc: string | null;
   source: string | null;
   created_by_admin: string | null;
   price_override: number | null;
@@ -1027,6 +1139,7 @@ function mapAdminReservationRows(
     decrypted.sort((a, b) => Number(b.isRepresentative) - Number(a.isRepresentative));
     const rep = decrypted.find((g) => g.isRepresentative) ?? null;
     const depositor = r.depositor_name_enc ? decrypt(r.depositor_name_enc) : null;
+    const refundAccount = r.refund_account_enc ? decrypt(r.refund_account_enc) : null;
 
     return {
       id: r.id,
@@ -1043,6 +1156,7 @@ function mapAdminReservationRows(
       total_price: r.total_price,
       memo: r.memo,
       depositor_name: depositor ? (opts.mask ? maskName(depositor) : depositor) : null,
+      refund_account: refundAccount ? (opts.mask ? "••••" : refundAccount) : null,
       source: (r.source === "manual" ? "manual" : "online") as "manual" | "online",
       created_by_admin: r.created_by_admin ?? null,
       price_override: r.price_override ?? null,
@@ -1066,7 +1180,7 @@ export async function listReservationsForAdmin(opts: {
   let query = supabase
     .from("reservations")
     .select(
-      "id,reservation_type,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
+      "id,reservation_type,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,refund_account_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
     )
     .order("created_at", { ascending: false })
     .limit(500);
@@ -1086,7 +1200,7 @@ export async function getReservationForAdmin(
   const { data, error } = await supabase
     .from("reservations")
     .select(
-      "id,reservation_type,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
+      "id,reservation_type,status,packages,package_label,room_key,season,guests_count,pet_count,check_in,check_out,total_price,memo,depositor_name_enc,refund_account_enc,source,created_by_admin,price_override,price_note,last_edited_at,last_edited_by,created_at,updated_at,reservation_guests(name_enc,phone_enc,is_representative)",
     )
     .eq("id", reservationId)
     .single();

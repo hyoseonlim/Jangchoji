@@ -18,6 +18,7 @@ import {
   computeSelectionLines,
   holidaysInRange,
   hasSaturdayNight,
+  isConfigKey,
   perPersonStayTotalByConfig,
   priceRangeByConfig,
   summarizeSeasonFromRange,
@@ -101,11 +102,40 @@ function todayISO(offsetDays = 0): string {
   return `${y}-${m}-${day}`;
 }
 
+function addDaysISO(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
 const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
 function formatDateKo(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   return `${m}월 ${d}일 (${DAY_KO[dt.getDay()]})`;
+}
+
+function nightsBetweenISO(checkIn: string, checkOut: string): string[] {
+  if (!checkIn || !checkOut || checkOut <= checkIn) return [];
+  const out: string[] = [];
+  let cursor = checkIn;
+  while (cursor < checkOut) {
+    out.push(cursor);
+    cursor = addDaysISO(cursor, 1);
+  }
+  return out;
+}
+
+function combineSelections(byNight: Record<string, PackageSelections>): PackageSelections {
+  const combined: PackageSelections = {};
+  for (const selections of Object.values(byNight)) {
+    for (const [key, quantity] of Object.entries(selections)) {
+      if (!quantity || !isConfigKey(key)) continue;
+      combined[key] = (combined[key] ?? 0) + quantity;
+    }
+  }
+  return combined;
 }
 
 const EMPTY_SELECTIONS: PackageSelections = {};
@@ -201,6 +231,7 @@ export function ReserveForm({
   const [petCount, setPetCount] = useState(0);
   const [availability, setAvailability] = useState<Availability>({ state: "idle" });
   const [selections, setSelections] = useState<PackageSelections>(EMPTY_SELECTIONS);
+  const [staySelectionsByNight, setStaySelectionsByNight] = useState<Record<string, PackageSelections>>({});
   const [guests, setGuests] = useState<Guest[]>([
     { name: "", phone: "", isRepresentative: true },
   ]);
@@ -210,6 +241,7 @@ export function ReserveForm({
   const [refundPolicyAgreed, setRefundPolicyAgreed] = useState(false);
   const [dayUsePolicyAgreed, setDayUsePolicyAgreed] = useState(false);
   const [depositorName, setDepositorName] = useState("");
+  const [refundAccount, setRefundAccount] = useState("");
   const [depositorEdited, setDepositorEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -229,16 +261,31 @@ export function ReserveForm({
     () => priceRangeByConfig(currentPackagePrices),
     [currentPackagePrices],
   );
-  const perPersonByConfig = useMemo(
-    () => perPersonStayTotalByConfig(currentPackagePrices, checkIn, checkOut),
-    [currentPackagePrices, checkIn, checkOut],
-  );
   const selectionResult = useMemo(
-    () =>
-      reservationMode === "stay"
-        ? computeSelectionLines(perPersonByConfig, selections)
-        : computeDayUseLines(selections),
-    [perPersonByConfig, selections, reservationMode],
+    () => {
+      if (reservationMode !== "stay") return computeDayUseLines(selections);
+      const nightStarts = nightsBetweenISO(checkIn, checkOut);
+      if (nightStarts.length === 0) return null;
+      let total = 0;
+      let totalQuantity = 0;
+      const lines: PackageLine[] = [];
+      for (const nightStart of nightStarts) {
+        const nightEnd = addDaysISO(nightStart, 1);
+        const prices = perPersonStayTotalByConfig(currentPackagePrices, nightStart, nightEnd);
+        const result = computeSelectionLines(prices, staySelectionsByNight[nightStart] ?? EMPTY_SELECTIONS);
+        if (!result) return null;
+        total += result.total;
+        totalQuantity += result.totalQuantity;
+        for (const line of result.lines) {
+          lines.push({
+            ...line,
+            label: `${formatDateKo(nightStart)} ${line.label}`,
+          });
+        }
+      }
+      return lines.length > 0 ? { lines, total, totalQuantity } : null;
+    },
+    [checkIn, checkOut, currentPackagePrices, selections, staySelectionsByNight, reservationMode],
   );
   const totalQuantity = selectionResult?.totalQuantity ?? 0;
   const remainingQuantity = Math.max(0, guestsCount - totalQuantity);
@@ -262,6 +309,19 @@ export function ReserveForm({
       (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86_400_000,
     );
   }, [checkIn, checkOut]);
+  const stayNightStarts = useMemo(() => nightsBetweenISO(checkIn, checkOut), [checkIn, checkOut]);
+  const stayNightSelectionResults = useMemo(() => {
+    return stayNightStarts.map((nightStart) => {
+      const prices = perPersonStayTotalByConfig(currentPackagePrices, nightStart, addDaysISO(nightStart, 1));
+      const result = computeSelectionLines(prices, staySelectionsByNight[nightStart] ?? EMPTY_SELECTIONS);
+      return { nightStart, prices, result };
+    });
+  }, [currentPackagePrices, stayNightStarts, staySelectionsByNight]);
+  const packageSelectionReady =
+    reservationMode === "stay"
+      ? stayNightSelectionResults.length > 0 &&
+        stayNightSelectionResults.every(({ result }) => (result?.totalQuantity ?? 0) >= guestsCount)
+      : totalQuantity >= guestsCount;
 
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -334,31 +394,16 @@ export function ReserveForm({
     });
   }, [guestsCount]);
 
-  // 인원 수가 줄어들면 초과된 패키지 수량도 축소
   useEffect(() => {
-    setSelections((prev) => {
-      const sum = Object.entries(prev).reduce(
-        (s, [key, n]) => (key === "day_bbq" ? s : s + (n ?? 0)),
-        0,
-      );
-      if (sum <= guestsCount) return prev;
-      const next: PackageSelections = { ...prev };
-      let overflow = sum - guestsCount;
-      const keys = reservationMode === "stay" ? STAY_CONFIG_KEYS : DAY_USE_CONFIG_KEYS.filter((key) => key !== "day_bbq");
-      for (const key of [...keys].reverse()) {
-        if (overflow <= 0) break;
-        const cur = next[key] ?? 0;
-        if (cur <= 0) continue;
-        const take = Math.min(cur, overflow);
-        next[key] = cur - take;
-        overflow -= take;
-      }
-      if (reservationMode === "day_use" && (next.day_inboat ?? 0) > 0 && (next.day_inboat ?? 0) < MIN_INBOAT_GUESTS) {
-        delete next.day_inboat;
+    if (reservationMode !== "stay") return;
+    setStaySelectionsByNight((prev) => {
+      const next: Record<string, PackageSelections> = {};
+      for (const nightStart of stayNightStarts) {
+        next[nightStart] = prev[nightStart] ?? EMPTY_SELECTIONS;
       }
       return next;
     });
-  }, [guestsCount, reservationMode]);
+  }, [reservationMode, stayNightStarts]);
 
   // 대표자 전화번호가 바뀌면 확인 체크를 초기화 (재확인 강제)
   useEffect(() => {
@@ -375,6 +420,7 @@ export function ReserveForm({
   function switchMode(mode: ReservationMode) {
     setReservationMode(mode);
     setSelections(EMPTY_SELECTIONS);
+    setStaySelectionsByNight({});
     setPetCount(0);
     setGuestsCount((prev) => Math.max(mode === "day_use" ? MIN_DAY_USE_GUESTS : MIN_GUESTS, prev));
     if (mode !== "stay") setRefundPolicyAgreed(false);
@@ -417,16 +463,9 @@ export function ReserveForm({
         else merged[key] = next;
         return merged;
       }
-      const otherSum =
-        Object.entries(prev).reduce(
-          (s, [k, v]) => (k === key || k === "day_bbq" ? s : s + (v ?? 0)),
-          0,
-        );
-      const maxForThis = Math.max(0, guestsCount - otherSum);
-      let next = Math.min(maxForThis, Math.max(0, cur + delta));
+      let next = Math.min(MAX_GUESTS, Math.max(0, cur + delta));
       if (reservationMode === "day_use" && key === "day_inboat") {
         if (cur === 0 && delta > 0) {
-          if (maxForThis < MIN_INBOAT_GUESTS) return prev;
           next = MIN_INBOAT_GUESTS;
         } else if (cur <= MIN_INBOAT_GUESTS && delta < 0) {
           next = 0;
@@ -438,6 +477,18 @@ export function ReserveForm({
       const merged = { ...prev, [key]: next };
       if (next === 0) delete merged[key];
       return merged;
+    });
+  }
+
+  function changeStayQuantity(nightStart: string, key: ConfigKey, delta: number) {
+    setStaySelectionsByNight((prev) => {
+      const curSelections = prev[nightStart] ?? EMPTY_SELECTIONS;
+      const cur = curSelections[key] ?? 0;
+      const nextQty = Math.min(MAX_GUESTS, Math.max(0, cur + delta));
+      if (nextQty === cur) return prev;
+      const nextSelections: PackageSelections = { ...curSelections, [key]: nextQty };
+      if (nextQty === 0) delete nextSelections[key];
+      return { ...prev, [nightStart]: nextSelections };
     });
   }
 
@@ -468,8 +519,12 @@ export function ReserveForm({
       setSubmitError("당일 패키지 예약 및 환불 규정을 확인 후 동의해주세요.");
       return;
     }
-    if (totalQuantity !== guestsCount) {
-      setSubmitError(`패키지 수량 합계(${totalQuantity}명)가 인원(${guestsCount}명)과 일치해야 합니다.`);
+    if (!packageSelectionReady) {
+      setSubmitError(
+        reservationMode === "stay"
+          ? "각 숙박일마다 예약 인원 이상 패키지를 선택해주세요."
+          : `패키지 수량 합계(${totalQuantity}명)가 인원(${guestsCount}명) 이상이어야 합니다.`,
+      );
       return;
     }
     if (!phoneConfirmed) {
@@ -480,13 +535,18 @@ export function ReserveForm({
       setSubmitError("입금자명을 입력해주세요.");
       return;
     }
+    if (refundAccount.trim().length === 0) {
+      setSubmitError("환불 시 입금받을 계좌를 입력해주세요.");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/reservations", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          packageSelections: selections,
+          packageSelections: reservationMode === "stay" ? combineSelections(staySelectionsByNight) : selections,
+          stayPackageSelectionsByNight: reservationMode === "stay" ? staySelectionsByNight : undefined,
           reservationType: reservationMode,
           guestsCount,
           petCount: reservationMode === "stay" ? petCount : 0,
@@ -495,6 +555,7 @@ export function ReserveForm({
           guests,
           memo: memo.trim() || undefined,
           depositorName: depositorName.trim() || undefined,
+          refundAccount: refundAccount.trim(),
           paymentConfirmed,
           refundPolicyAgreed: reservationMode === "stay" ? refundPolicyAgreed : undefined,
           dayUsePolicyAgreed: reservationMode === "day_use" ? dayUsePolicyAgreed : undefined,
@@ -586,8 +647,8 @@ export function ReserveForm({
                 className="mt-3 pt-3 space-y-1"
                 style={{ borderTop: "1px solid rgba(0,0,0,0.08)", fontSize: "13px" }}
               >
-                {done.lines.map((line) => (
-                  <li key={line.configKey} className="flex justify-between gap-3">
+                {done.lines.map((line, idx) => (
+                  <li key={`${line.configKey}-${line.label}-${idx}`} className="flex justify-between gap-3">
                     <span className="text-black/70">
                       {line.label} <span className="text-black/45">× {line.quantity}명</span>
                     </span>
@@ -653,7 +714,7 @@ export function ReserveForm({
           ? "성수기·비수기 혼합"
           : "-";
 
-  const quantityMatch = totalQuantity === guestsCount;
+  const quantityMatch = packageSelectionReady;
   const packageGroups = reservationMode === "stay" ? STAY_PACKAGE_GROUPS : DAY_USE_PACKAGE_GROUPS;
   const availabilityBlocked =
     availability.state === "unavailable" || availability.state === "error";
@@ -871,17 +932,147 @@ export function ReserveForm({
           }}
         >
           <span className="text-black" style={{ fontWeight: 700 }}>
-            선택 인원 {totalQuantity} / {guestsCount}명
+            {reservationMode === "stay"
+              ? "각 숙박일마다 예약 인원 이상 선택"
+              : `선택 인원 ${totalQuantity} / ${guestsCount}명 이상`}
           </span>
           {!quantityMatch && (
             <span style={{ color: "#a06500", fontSize: "12px", fontWeight: 600 }}>
-              {remainingQuantity > 0 ? `${remainingQuantity}명 더 선택` : `${-remainingQuantity}명 초과`}
+              {reservationMode === "stay"
+                ? "날짜별로 더 선택"
+                : `${remainingQuantity}명 더 선택`}
             </span>
           )}
         </div>
 
-        <div className="space-y-4">
-          {packageGroups.map((group) => (
+        <div className="space-y-5">
+          {reservationMode === "stay" ? stayNightSelectionResults.map(({ nightStart, prices, result }) => (
+            <div
+              key={nightStart}
+              className="p-3 md:p-4 bg-white"
+              style={{
+                border: (result?.totalQuantity ?? 0) >= guestsCount
+                  ? "1px solid rgba(0,194,209,0.35)"
+                  : "1px solid rgba(255,193,7,0.45)",
+                borderRadius: "3px",
+              }}
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-black" style={{ fontSize: "15px", fontWeight: 900 }}>
+                  {formatDateKo(nightStart)} ~ {formatDateKo(addDaysISO(nightStart, 1))}
+                </h3>
+                <span style={{ fontSize: "12px", fontWeight: 800, color: (result?.totalQuantity ?? 0) >= guestsCount ? "#00838f" : "#a06500" }}>
+                  {(result?.totalQuantity ?? 0)} / {guestsCount}명 이상
+                </span>
+              </div>
+              <div className="space-y-4">
+                {STAY_PACKAGE_GROUPS.map((group) => (
+                  <div key={`${nightStart}-${group.title}`}>
+                    <div className="mb-2 flex items-center gap-2">
+                      <h4 className="text-black" style={{ fontSize: "14px", fontWeight: 900, letterSpacing: "-0.01em" }}>
+                        <PackageGroupIcon name={group.icon} />
+                        {group.title}
+                      </h4>
+                      {group.badge && (
+                        <span
+                          style={{
+                            padding: "2px 6px",
+                            borderRadius: "2px",
+                            backgroundColor: "rgba(0,194,209,0.1)",
+                            color: "#00838f",
+                            fontSize: "10px",
+                            fontWeight: 900,
+                          }}
+                        >
+                          {group.badge}
+                        </span>
+                      )}
+                    </div>
+                    <ul className="space-y-2">
+                      {group.keys.map((key) => {
+                        const quantity = staySelectionsByNight[nightStart]?.[key] ?? 0;
+                        const perPerson = prices[key];
+                        const active = quantity > 0;
+                        const best = BEST_PACKAGE_KEYS.has(key);
+                        return (
+                          <li
+                            key={`${nightStart}-${key}`}
+                            className="p-3 md:p-4 flex items-center justify-between gap-3"
+                            style={{
+                              backgroundColor: active ? "rgba(0,194,209,0.06)" : "#fff",
+                              border: active ? "1px solid #00C2D1" : "1px solid rgba(0,0,0,0.1)",
+                              borderRadius: "2px",
+                            }}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <div className="text-black" style={{ fontSize: "13px", fontWeight: 700 }}>
+                                  {CONFIG_LABELS[key]}
+                                </div>
+                                {best && (
+                                  <span
+                                    style={{
+                                      padding: "2px 6px",
+                                      borderRadius: "2px",
+                                      backgroundColor: "#ff4d00",
+                                      color: "#fff",
+                                      fontSize: "10px",
+                                      fontWeight: 900,
+                                      lineHeight: 1.2,
+                                      letterSpacing: "0.04em",
+                                    }}
+                                  >
+                                    BEST
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-0.5 text-black/60" style={{ fontSize: "12px", lineHeight: 1.5 }}>
+                                {perPerson != null ? (
+                                  <>
+                                    1인 <strong className="text-black">{won(perPerson)}</strong>
+                                  </>
+                                ) : (
+                                  <span>-</span>
+                                )}
+                                {quantity > 0 && perPerson != null && (
+                                  <span className="ml-2 text-black" style={{ fontWeight: 700 }}>
+                                    · 소계 {won(perPerson * quantity)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="inline-flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => changeStayQuantity(nightStart, key, -1)}
+                                disabled={quantity === 0}
+                                style={{ ...smallStepBtn, opacity: quantity === 0 ? 0.35 : 1 }}
+                                aria-label="수량 감소"
+                              >
+                                −
+                              </button>
+                              <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 800, fontSize: "15px" }}>
+                                {quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => changeStayQuantity(nightStart, key, +1)}
+                                disabled={perPerson == null}
+                                style={{ ...smallStepBtn, opacity: perPerson == null ? 0.35 : 1 }}
+                                aria-label="수량 증가"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )) : packageGroups.map((group) => (
             <div key={group.title}>
               <div className="mb-2 flex items-center gap-2">
                 <h3 className="text-black" style={{ fontSize: "14px", fontWeight: 900, letterSpacing: "-0.01em" }}>
@@ -906,14 +1097,10 @@ export function ReserveForm({
               <ul className="space-y-2">
                 {group.keys.map((key) => {
                   const quantity = selections[key] ?? 0;
-                  const perPerson =
-                    reservationMode === "stay"
-                      ? perPersonByConfig[key]
-                      : DAY_USE_PRICES[key as keyof typeof DAY_USE_PRICES];
+                  const perPerson = DAY_USE_PRICES[key as keyof typeof DAY_USE_PRICES];
                   const range = priceRanges[key];
                   const isInboat = reservationMode === "day_use" && key === "day_inboat";
-                  const inboatStartDisabled = isInboat && quantity === 0 && remainingQuantity < MIN_INBOAT_GUESTS;
-                  const disabled = (remainingQuantity === 0 && quantity === 0) || inboatStartDisabled;
+                  const disabled = false;
                   const active = quantity > 0;
                   const best = BEST_PACKAGE_KEYS.has(key);
                   return (
@@ -954,8 +1141,7 @@ export function ReserveForm({
                         >
                           {perPerson != null ? (
                             <>
-                              1인 총 <strong className="text-black">{won(perPerson)}</strong>
-                              {reservationMode === "stay" && <span className="text-black/45"> ({nights}박)</span>}
+                              1인 <strong className="text-black">{won(perPerson)}</strong>
                             </>
                           ) : range ? (
                             <>
@@ -1205,8 +1391,8 @@ export function ReserveForm({
             className="mt-4 pt-4 space-y-1"
             style={{ borderTop: "1px solid rgba(0,0,0,0.08)", fontSize: "13px" }}
           >
-            {selectionResult.lines.map((line) => (
-              <li key={line.configKey} className="flex justify-between gap-3">
+            {selectionResult.lines.map((line, idx) => (
+              <li key={`${line.configKey}-${line.label}-${idx}`} className="flex justify-between gap-3">
                 <span className="text-black/70">
                   {line.label} <span className="text-black/45">× {line.quantity}명</span>
                 </span>
@@ -1233,6 +1419,7 @@ export function ReserveForm({
             {selectionResult && selectionResult.lines.length > 0 ? won(grandTotal) : "-"}
           </span>
         </div>
+
       </div>
 
       {reservationMode === "stay" && (
@@ -1420,6 +1607,25 @@ export function ReserveForm({
             style={inputStyle}
           />
         </div>
+
+        <div className="mt-4">
+          <label className="block text-black/70 mb-1.5" style={{ fontSize: "12px", fontWeight: 600 }}>
+            환불 계좌
+          </label>
+          <input
+            type="text"
+            value={refundAccount}
+            onChange={(e) => setRefundAccount(e.target.value)}
+            placeholder="은행명 · 계좌번호 · 예금주를 입력해주세요"
+            maxLength={100}
+            className="w-full px-3 py-2.5 bg-white"
+            style={inputStyle}
+            required
+          />
+          <p className="mt-1.5 text-black/50" style={{ fontSize: "12px", lineHeight: 1.5 }}>
+            예약 취소로 환불이 필요한 경우에만 사용됩니다.
+          </p>
+        </div>
       </div>
 
       {submitError && (
@@ -1447,6 +1653,7 @@ export function ReserveForm({
             submitting ||
             !phoneConfirmed ||
             !paymentConfirmed ||
+            refundAccount.trim().length === 0 ||
             (reservationMode === "stay" && !refundPolicyAgreed) ||
             (reservationMode === "day_use" && !dayUsePolicyAgreed) ||
             !quantityMatch ||
@@ -1465,6 +1672,7 @@ export function ReserveForm({
               submitting ||
                 !phoneConfirmed ||
                 !paymentConfirmed ||
+                refundAccount.trim().length === 0 ||
                 (reservationMode === "stay" && !refundPolicyAgreed) ||
                 (reservationMode === "day_use" && !dayUsePolicyAgreed) ||
                 !quantityMatch ||
@@ -1478,6 +1686,7 @@ export function ReserveForm({
               submitting ||
                 !phoneConfirmed ||
                 !paymentConfirmed ||
+                refundAccount.trim().length === 0 ||
                 (reservationMode === "stay" && !refundPolicyAgreed) ||
                 (reservationMode === "day_use" && !dayUsePolicyAgreed) ||
                 !quantityMatch ||
@@ -1498,7 +1707,9 @@ export function ReserveForm({
               : availability.state === "loading"
                 ? "일정 확인 중..."
                 : !quantityMatch
-                  ? `패키지 ${remainingQuantity > 0 ? `${remainingQuantity}명 더 선택` : `${-remainingQuantity}명 초과`}`
+                  ? reservationMode === "stay"
+                    ? "날짜별 패키지 선택 필요"
+                    : `패키지 ${remainingQuantity}명 더 선택`
                   : dayUseBbqBlocked
                     ? "BBQ 하루 전 예약 필요"
                     : inboatMinBlocked
@@ -1511,6 +1722,8 @@ export function ReserveForm({
                             ? "전화번호 확인 체크 필요"
                             : !paymentConfirmed
                               ? "입금 확인 체크 필요"
+                              : refundAccount.trim().length === 0
+                                ? "환불 계좌 입력 필요"
                               : "예약 신청"}
         </button>
       </div>

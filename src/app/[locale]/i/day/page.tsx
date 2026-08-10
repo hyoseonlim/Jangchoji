@@ -14,6 +14,12 @@ export const metadata = {
   description: "건전한 레저 당일 패키지 예약 고객을 위한 이용 정보 안내",
 };
 
+const showerItems = [
+  "샤워실은 무료로 이용하실 수 있습니다.",
+  "세면도구 및 샤워용품은 개별 지참 부탁드립니다. (수건은 제공)",
+  "필요 시 매점에서도 샤워용품을 판매하고 있습니다. (각 1,000원)",
+];
+
 export default async function DayUseInfoShortLinkPage({
   params,
 }: {
@@ -43,6 +49,16 @@ export default async function DayUseInfoShortLinkPage({
           <Row k="접수" v="예약 당일 현장 접수" />
           <Row k="이용" v="놀이기구 운영시간 내 이용" />
         </dl>
+      </InfoSection>
+
+      <InfoSection title="샤워실 안내">
+        <ul className="space-y-2">
+          {showerItems.map((item) => (
+            <li key={item} className="pl-3 text-black/75" style={{ borderLeft: "2px solid #00C2D1" }}>
+              {item}
+            </li>
+          ))}
+        </ul>
       </InfoSection>
 
       <OperatingHoursSection />

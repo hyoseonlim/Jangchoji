@@ -52,6 +52,7 @@ CREATE INDEX idx_products_filter ON products (season, group_size, day_type) WHER
 --     Σ quantity == guests_count · Σ lineTotal == total_price (앱 레벨 보장).
 --   package_label      : 관리자 목록 요약 ("3종×3, 5종×2").
 --   depositor_name_enc : 입금자명 (대표자와 다를 수 있음). AES-256-GCM 암호화.
+--   refund_account_enc : 환불 시 입금받을 계좌. AES-256-GCM 암호화.
 --   reservation_type   : stay = 숙박 패키지, day_use = 당일 패키지.
 --   room_key           : 물리 객실 (4/5/6인실 각 A·B 2개, 8인실 1개 = 총 7개).
 --                        당일 패키지는 room_key = NULL 로 저장.
@@ -81,6 +82,7 @@ CREATE TABLE reservations (
   price_note         TEXT,
   memo               TEXT,
   depositor_name_enc TEXT,
+  refund_account_enc TEXT,
   last_edited_at     TIMESTAMPTZ,
   last_edited_by     TEXT,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -6,7 +6,7 @@ import {
   MIN_INBOAT_GUESTS,
   validateOnlineGuestPolicy,
 } from "@/lib/reservations";
-import { isConfigKey, type PackageSelections } from "@/lib/pricing";
+import { isConfigKey, isStayConfigKey, type PackageSelections } from "@/lib/pricing";
 import { notifyAdmin } from "@/lib/discord";
 
 export const runtime = "nodejs";
@@ -31,8 +31,23 @@ function parseSelections(v: unknown): PackageSelections | null {
   const out: PackageSelections = {};
   for (const [k, val] of Object.entries(v)) {
     if (!isConfigKey(k)) return null;
-    if (typeof val !== "number" || !Number.isInteger(val) || val < 0 || val > 20) return null;
+    if (typeof val !== "number" || !Number.isInteger(val) || val < 0 || val > 100) return null;
     if (val > 0) out[k] = val;
+  }
+  return out;
+}
+
+function parseStaySelectionsByNight(v: unknown): Record<string, PackageSelections> | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const out: Record<string, PackageSelections> = {};
+  for (const [date, rawSelections] of Object.entries(v)) {
+    if (!ISO_DATE_RE.test(date)) return null;
+    const selections = parseSelections(rawSelections);
+    if (!selections) return null;
+    for (const key of Object.keys(selections)) {
+      if (!isStayConfigKey(key)) return null;
+    }
+    out[date] = selections;
   }
   return out;
 }
@@ -49,10 +64,15 @@ export async function POST(req: Request) {
   const reservationType = b.reservationType === "day_use" ? "day_use" : "stay";
 
   const selections = parseSelections(b.packageSelections);
-  if (!selections || Object.keys(selections).length === 0) {
+  const stayPackageSelectionsByNight =
+    reservationType === "stay" ? parseStaySelectionsByNight(b.stayPackageSelectionsByNight) : null;
+  if (
+    (!selections || Object.keys(selections).length === 0) &&
+    (!stayPackageSelectionsByNight || Object.keys(stayPackageSelectionsByNight).length === 0)
+  ) {
     return badRequest("패키지를 1개 이상 선택해주세요.");
   }
-  const totalQuantity = Object.entries(selections).reduce(
+  const totalQuantity = Object.entries(selections ?? {}).reduce(
     (s, [key, n]) => (key === "day_bbq" ? s : s + (n ?? 0)),
     0,
   );
@@ -64,12 +84,12 @@ export async function POST(req: Request) {
   ) {
     return badRequest(`인원은 ${reservationType === "day_use" ? 1 : MIN_GUESTS}명 이상이어야 합니다.`);
   }
-  if (totalQuantity !== b.guestsCount) {
+  if (reservationType === "day_use" && totalQuantity < b.guestsCount) {
     return badRequest(
-      `선택한 패키지 수량(${totalQuantity}명)이 예약 인원(${b.guestsCount}명)과 일치해야 합니다.`,
+      `선택한 패키지 수량(${totalQuantity}명)이 예약 인원(${b.guestsCount}명) 이상이어야 합니다.`,
     );
   }
-  if (reservationType === "day_use" && (selections.day_inboat ?? 0) > 0 && (selections.day_inboat ?? 0) < MIN_INBOAT_GUESTS) {
+  if (reservationType === "day_use" && ((selections?.day_inboat ?? 0) > 0) && (selections?.day_inboat ?? 0) < MIN_INBOAT_GUESTS) {
     return badRequest("럭셔리 인보트 보팅은 4인 이상부터 선택 가능합니다.");
   }
   if (typeof b.checkIn !== "string" || !ISO_DATE_RE.test(b.checkIn)) return badRequest("checkIn 형식 오류");
@@ -92,6 +112,10 @@ export async function POST(req: Request) {
     typeof b.depositorName === "string" && b.depositorName.trim().length > 0
       ? b.depositorName.trim().slice(0, 40)
       : undefined;
+  if (typeof b.refundAccount !== "string" || b.refundAccount.trim().length === 0) {
+    return badRequest("환불 시 입금받을 계좌를 입력해주세요.");
+  }
+  const refundAccount = b.refundAccount.trim().slice(0, 100);
 
   let guests: { name: string; phone?: string; isRepresentative: boolean }[];
   try {
@@ -121,17 +145,19 @@ export async function POST(req: Request) {
     const { reservation, quote } =
       reservationType === "day_use"
         ? await createDayUseReservation({
-            packageSelections: selections,
+            packageSelections: selections ?? {},
             guestsCount: b.guestsCount,
             date: b.checkIn,
             guests,
             memo,
             depositorName,
+            refundAccount,
             paymentConfirmed: true,
             policyAgreed: true,
           })
         : await createReservation({
-            packageSelections: selections,
+            packageSelections: selections ?? {},
+            packageSelectionsByNight: stayPackageSelectionsByNight ?? undefined,
             guestsCount: b.guestsCount,
             petCount,
             checkIn: b.checkIn,
@@ -139,6 +165,7 @@ export async function POST(req: Request) {
             guests,
             memo,
             depositorName,
+            refundAccount,
             paymentConfirmed: true,
             refundPolicyAgreed: true,
           });

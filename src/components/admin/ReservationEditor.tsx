@@ -538,9 +538,9 @@ export function ReservationEditor({
 
             {/* 패키지 */}
             <Field label={`패키지 · 선택 ${totalQuantity}명 (인원 ${guestsCount})`}>
-              {totalQuantity !== guestsCount && (
+              {totalQuantity < guestsCount && (
                 <p style={{ color: "#ffc107", fontSize: "11px", marginBottom: "6px" }}>
-                  ⓘ 관리자는 수량과 인원 수가 달라도 저장할 수 있습니다.
+                  ⓘ 선택 수량이 인원보다 적지만 관리자 권한으로 저장은 가능합니다.
                 </p>
               )}
               <ul className="space-y-1">

@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac, randomBytes } from "node:crypto";
+import { notifyAdmin } from "@/lib/discord";
 
 type SolapiMessage = {
   to: string;
@@ -36,8 +37,7 @@ async function sendSolapiMessage(message: SolapiMessage): Promise<void> {
   const apiKey = process.env.SOLAPI_API_KEY;
   const apiSecret = process.env.SOLAPI_API_SECRET;
   if (!apiKey || !apiSecret) {
-    console.warn("[solapi] SOLAPI_API_KEY / SOLAPI_API_SECRET 미설정 - 문자 발송 스킵");
-    return;
+    throw new Error("SOLAPI_API_KEY / SOLAPI_API_SECRET 미설정");
   }
 
   const res = await fetch(SOLAPI_SEND_URL, {
@@ -80,15 +80,20 @@ export async function notifyReservationConfirmedBySms(input: ReservationSmsInput
     return;
   }
 
+  const text = buildReservationConfirmedText(input);
   const from = normalizePhoneNumber(process.env.SOLAPI_FROM);
   if (!from) {
-    console.warn("[solapi] SOLAPI_FROM 미설정 또는 형식 오류 - 문자 발송 스킵");
+    const reason = "SOLAPI_FROM 미설정 또는 형식 오류";
+    console.warn(`[solapi] ${reason} - 문자 발송 스킵`);
+    await notifyAdmin(`[예약 확정 문자 발송 실패]\n${text}\n\n사유: ${reason}`);
     return;
   }
 
   const to = normalizePhoneNumber(input.to);
   if (!to) {
-    console.warn("[solapi] 수신번호 없음 또는 형식 오류 - 문자 발송 스킵");
+    const reason = "수신번호 없음 또는 형식 오류";
+    console.warn(`[solapi] ${reason} - 문자 발송 스킵`);
+    await notifyAdmin(`[예약 확정 문자 발송 실패]\n${text}\n\n사유: ${reason}`);
     return;
   }
 
@@ -96,9 +101,12 @@ export async function notifyReservationConfirmedBySms(input: ReservationSmsInput
     await sendSolapiMessage({
       to,
       from,
-      text: buildReservationConfirmedText(input),
+      text,
     });
+    await notifyAdmin(`[예약 확정 문자 발송 완료]\n${text}`);
   } catch (err) {
     console.error("[solapi] 예약 확정 문자 발송 실패:", err);
+    const reason = err instanceof Error ? err.message : "알 수 없는 오류";
+    await notifyAdmin(`[예약 확정 문자 발송 실패]\n${text}\n\n사유: ${reason}`);
   }
 }
