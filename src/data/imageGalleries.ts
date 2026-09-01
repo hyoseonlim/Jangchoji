@@ -16,7 +16,7 @@ const cafe = seq("배카페", 10);
 const rooftop = seq("루프탑", 23);
 const stay = seq("숙소", 10);
 const bbq = seq("바베큐", 8);
-const info = seq("info", 28);
+const info = seq("info", 29);
 // 메인 슬라이드는 0.webp 부터 시작.
 const main = Array.from({ length: 8 }, (_, i) => assetUrl(`/images/메인/${i}.webp`));
 
